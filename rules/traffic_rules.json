@@ -1,0 +1,302 @@
+[
+  {
+    "paragraph": "§37 StVO",
+    "title": "Überfahren einer roten Ampel",
+    "fine": "90–360 €",
+    "points": 1,
+    "driving_ban": "1 Monat bei qualifiziertem Verstoß",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt bei Rot über Haltelinie oder Kreuzung",
+    "keywords": ["ampel", "rotlicht", "rote ampel", "haltelinie", "kreuzung"]
+  },
+  {
+    "paragraph": "§8 StVO",
+    "title": "Nichtbeachten von 'Rechts vor Links'",
+    "fine": "25–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug missachtet Vorrang von rechts kommendem Fahrzeug an Kreuzung ohne Beschilderung",
+    "keywords": ["rechts vor links", "vorfahrt", "kreuzung", "vorrang"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 206",
+    "title": "Missachtung Stoppschild",
+    "fine": "70 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug überfährt Stopplinie ohne Halt",
+    "keywords": ["stoppschild", "stop", "haltelinie", "zeichen 206"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 205",
+    "title": "Missachtung 'Vorfahrt gewähren'",
+    "fine": "25–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt ohne Anhalten in Kreuzung trotz Vorfahrt-gewähren-Schild",
+    "keywords": ["vorfahrt gewähren", "dreieck", "schild", "zeichen 205"]
+  },
+  {
+    "paragraph": "§23 Abs. 1a StVO",
+    "title": "Handynutzung am Steuer",
+    "fine": "100–200 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nur bei schweren Fällen",
+    "detectable": "Fahrer hält oder benutzt sichtbar Handy während der Fahrt",
+    "keywords": ["handy", "telefon", "smartphone", "display"]
+  },
+  {
+    "paragraph": "§21a StVO",
+    "title": "Nicht angelegter Sicherheitsgurt",
+    "fine": "30 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrer ohne angelegten Gurt sichtbar im Bild",
+    "keywords": ["gurt", "sicherheitsgurt", "anschnallen"]
+  },
+  {
+    "paragraph": "§9 StVO",
+    "title": "Abbiegen ohne Blinken",
+    "fine": "10–30 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug ändert Fahrtrichtung ohne gesetzten Blinker",
+    "keywords": ["blinker", "abbiegen", "richtungsanzeiger"]
+  },
+  {
+    "paragraph": "§9 StVO",
+    "title": "Abbiegen aus falscher Spur",
+    "fine": "15–35 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug biegt ab, obwohl Spurmarkierung andere Richtung zeigt",
+    "keywords": ["spur", "abbiegen", "fahrbahnmarkierung"]
+  },
+  {
+    "paragraph": "§5 StVO",
+    "title": "Überholen trotz Überholverbot",
+    "fine": "70–250 €",
+    "points": 1,
+    "driving_ban": "1 Monat bei Gefährdung",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug überholt bei Überholverbotsschild oder durchgezogener Linie",
+    "keywords": ["überholen", "überholverbot", "zeichen 276", "zeichen 277"]
+  },
+  {
+    "paragraph": "§4 StVO",
+    "title": "Zu geringer Sicherheitsabstand",
+    "fine": "75–320 €",
+    "points": 1,
+    "driving_ban": "1 Monat (bei hohem Tempo)",
+    "license_withdrawal": "Nein",
+    "detectable": "Abstand zwischen zwei Fahrzeugen deutlich zu gering",
+    "keywords": ["abstand", "auffahren", "sicherheitsabstand"]
+  },
+  {
+    "paragraph": "§12 StVO",
+    "title": "Parken im Halteverbot oder auf Gehweg",
+    "fine": "20–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug steht auf Gehweg, Radweg oder im Halteverbotsschild-Bereich",
+    "keywords": ["parken", "halteverbot", "gehweg", "radweg"]
+  },
+  {
+    "paragraph": "§3 StVO",
+    "title": "Überhöhte Geschwindigkeit",
+    "fine": "30–800 € (je nach Überschreitung)",
+    "points": 1,
+    "driving_ban": "1 Monat bei starker Überschreitung",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug mit klar sichtbarem Geschwindigkeitsbegrenzungsschild fährt offensichtlich zu schnell",
+    "keywords": ["geschwindigkeit", "tempo", "limit", "schild 274"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 295",
+    "title": "Überfahren einer durchgezogenen Linie",
+    "fine": "100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug überquert durchgezogene Fahrbahnlinie",
+    "keywords": ["linie", "durchgezogen", "sperrfläche", "zeichen 295"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 298",
+    "title": "Überfahren einer Sperrfläche",
+    "fine": "100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt auf oder über Sperrfläche",
+    "keywords": ["sperrfläche", "markierung", "weißes raster"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 250",
+    "title": "Befahren einer gesperrten Straße",
+    "fine": "50–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt trotz Durchfahrt-verboten-Schild",
+    "keywords": ["durchfahrt verboten", "zeichen 250", "gesperrt"]
+  },
+  {
+    "paragraph": "§2 StVO",
+    "title": "Befahren einer Busspur",
+    "fine": "55–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt auf Busspur mit Beschriftung BUS oder entsprechender Markierung",
+    "keywords": ["busspur", "nur bus", "taxi", "sonderfahrstreifen"]
+  },
+  {
+    "paragraph": "§26 StVO",
+    "title": "Nichtbeachten von Fußgängerüberweg (Zebrastreifen)",
+    "fine": "80–120 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug überquert Zebrastreifen während Fußgänger wartet oder läuft",
+    "keywords": ["fußgänger", "zebrastreifen", "überweg"]
+  },
+  {
+    "paragraph": "§9 Abs.3 StVO",
+    "title": "Fußgänger beim Abbiegen gefährdet",
+    "fine": "70–140 €",
+    "points": 1,
+    "driving_ban": "1 Monat (bei Gefährdung)",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug biegt ab und missachtet Fußgänger auf Übergang",
+    "keywords": ["abbiegen", "fußgänger", "kreuzung"]
+  },
+  {
+    "paragraph": "§5 Abs.4 StVO",
+    "title": "Überholen mit zu geringem Abstand zu Radfahrern",
+    "fine": "70–120 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug überholt Radfahrer mit zu geringem Seitenabstand",
+    "keywords": ["überholen", "radfahrer", "abstand", "seitlich"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 220",
+    "title": "Falsches Einfahren in Einbahnstraße",
+    "fine": "25–50 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt entgegen Pfeilrichtung in Einbahnstraße",
+    "keywords": ["einbahnstraße", "verkehrsrichtung", "zeichen 220"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 239",
+    "title": "Befahren eines Fußgängerbereichs",
+    "fine": "60–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt in Bereich mit Fußgängerzone-Schild",
+    "keywords": ["fußgängerzone", "bereich", "zeichen 239"]
+  },
+  {
+    "paragraph": "§42 StVO, Zeichen 325",
+    "title": "Zu schnelle Fahrt in Spielstraße",
+    "fine": "20–100 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt in Spielstraße mit erkennbar zu hohem Tempo",
+    "keywords": ["spielstraße", "verkehrsberuhigt", "zeichen 325"]
+  },
+  {
+    "paragraph": "§17 StVO",
+    "title": "Fahren ohne Licht bei Dunkelheit",
+    "fine": "20–60 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt bei Nacht ohne eingeschaltete Beleuchtung",
+    "keywords": ["licht", "scheinwerfer", "dunkel", "nacht"]
+  },
+  {
+    "paragraph": "§38 StVO",
+    "title": "Nichtbeachten von Blaulicht und Martinshorn",
+    "fine": "20–60 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug blockiert erkennbar Einsatzfahrzeug mit Blaulicht",
+    "keywords": ["blaulicht", "martinshorn", "einsatzfahrzeug"]
+  },
+  {
+    "paragraph": "§11 Abs.1 StVO",
+    "title": "Blockieren einer Kreuzung",
+    "fine": "20–50 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug hält mitten in Kreuzung trotz Stau und behindert Verkehr",
+    "keywords": ["kreuzung", "blockieren", "stau"]
+  },
+  {
+    "paragraph": "§12 StVO",
+    "title": "Parken vor Ein- und Ausfahrten",
+    "fine": "20–50 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug steht direkt vor einer Grundstücksausfahrt",
+    "keywords": ["einfahrt", "ausfahrt", "parken"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 297",
+    "title": "Missachtung von Richtungspfeilen auf Fahrbahn",
+    "fine": "10–35 €",
+    "points": 0,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt entgegen Richtungspfeil-Markierung auf Fahrbahn",
+    "keywords": ["richtungspfeil", "pfeil", "spur"]
+  },
+  {
+    "paragraph": "§9 Abs.5 StVO",
+    "title": "Unerlaubtes Wenden",
+    "fine": "20–70 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug führt Wendemanöver an unzulässiger Stelle durch",
+    "keywords": ["wenden", "umdrehen", "manöver"]
+  },
+  {
+    "paragraph": "§18 StVO",
+    "title": "Rückwärtsfahren auf Autobahn oder Kraftfahrstraße",
+    "fine": "75–200 €",
+    "points": 2,
+    "driving_ban": "1 Monat",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug fährt rückwärts auf Autobahnauffahrt oder -spur",
+    "keywords": ["autobahn", "rückwärtsfahren", "geisterfahrer"]
+  },
+  {
+    "paragraph": "§41 StVO, Zeichen 340",
+    "title": "Parken auf Schutzstreifen für Radfahrer",
+    "fine": "55–100 €",
+    "points": 1,
+    "driving_ban": "Nein",
+    "license_withdrawal": "Nein",
+    "detectable": "Fahrzeug steht auf markiertem Schutzstreifen (unterbrochene Linie mit Fahrrad-Symbol)",
+    "keywords": ["schutzstreifen", "radweg", "parken", "zeichen 340"]
+  }
+]

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>🚗 Verkehrsregel-Erkennung mit KI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background: #f4f4f4;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            max-width: 980px; /* etwas breiter für 2 Spalten */
+            margin: auto;
+        }
+        h1 { color: #333; }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        input { margin-top: 10px; }
+
+        /* ===== Zwei getrennte schwarze Boxen ===== */
+        .result-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 20px;
+        }
+        @media (max-width: 820px) {
+            .result-grid { grid-template-columns: 1fr; }
+        }
+        .result {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            border-left: 6px solid #28a745;
+            font-family: 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            border-radius: 10px;
+            white-space: normal;
+        }
+        .lang-badge {
+            font-weight: 700;
+            font-size: 14px;
+            color: #ddd;
+            margin-bottom: 8px;
+        }
+        .result b { color: #fff; }
+        .error {
+            background: #ffe9e9;
+            border-left: 6px solid #dc3545;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚦 Verkehrsregel-Verstoß-Erkennung</h1>
+
+        <p>Lade ein Verkehrsbild oder ein kurzes Video (max. 15s) hoch, um zu prüfen, ob eine Regel verletzt wurde.</p>
+
+        <form method="POST" enctype="multipart/form-data">
+
+            <input type="file" name="image" accept="image/*,video/*" required><br><br>
+
+            <button type="submit">Analysieren</button>
+        </form>
+
+        {% if result_de or result_en %}
+            <div class="result-grid">
+                <div class="result">
+                    <div class="lang-badge">DE  Deutsch</div>
+                    <div class="result-body">{{ result_de | safe }}</div>
+                </div>
+                <div class="result">
+                    <div class="lang-badge">ENG English</div>
+                    <div class="result-body">{{ result_en | safe }}</div>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if error %}
+            <div class="error"><p>{{ error }}</p></div>
+        {% endif %}
+    </div>
+</body>
+</html>
