@@ -11,6 +11,13 @@ import numpy as np
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "uploads"
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+# === Damit hochgeladene Bilder und Frames im Browser sichtbar sind ===
+from flask import send_from_directory
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    """Gibt hochgeladene Dateien (Bilder/Videos) öffentlich aus, damit sie im Frontend angezeigt werden können."""
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 # === API-Konfiguration ===
 config = configparser.ConfigParser()
@@ -598,140 +605,539 @@ def extract_scenes(video_path, segment_len_sec=3.0, max_seconds=15.0):
 # === Flask Route (Bild ODER Video) – Video nutzt Szenenanalyse (Option A)
 # =========================================================================
 
+# =========================================================================
+# === Flask Route – angepasst für einseitiges Ampel-HTML-Design ============
+# =========================================================================
+
 @app.route("/", methods=["GET", "POST"])
 def index():
-    result_de, result_en, error = None, None, None
-    temp_files_to_clean = []  # Hält Uploads + Szenenbilder zum Löschen
+    result_de, result_en = None, None
+    error = None
+    frames = []
+    uploaded_image = None
+    video_path = None  # <— NEU hinzugefügt
+    temp_files_to_clean = []
 
     if request.method == "POST":
-        if "image" not in request.files:
-            error = "Keine Datei hochgeladen."
+        file = request.files.get("image")
+        if not file or file.filename == "":
+            error = "Keine Datei ausgewählt."
         else:
-            file = request.files["image"]
-            if file.filename == "":
-                error = "Keine Datei ausgewählt."
-            else:
-                file_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-                file.save(file_path)
-                temp_files_to_clean.append(file_path)  # Originaldatei zum Löschen vormerken
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            file_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
+            file.save(file_path)
+            temp_files_to_clean.append(file_path)
 
-                file_ext = os.path.splitext(file.filename)[1].lower()
+            try:
+                # === FALL 1: BILD ===
+                if file_ext in ALLOWED_IMAGES:
+                    # Stelle sicher, dass das Bild im Browser erreichbar ist
+                    uploaded_image = f"/uploads/{os.path.basename(file_path)}"
 
-                try:
-                    # === FALL 1: BILD ===
-                    if file_ext in ALLOWED_IMAGES:
-                        image_path = file_path
+                    scene_description = get_scene_description(file_path)
+                    if scene_description == "unbekannt":
+                        raise Exception("Konnte keinen klaren Verdachtsfall im Bild erkennen.")
 
-                        # === GEÄNDERT: Schritt 1: Benutze "General-Schlüssel" ===
-                        scene_description = get_scene_description(image_path)
-                        if scene_description == "unbekannt":
-                            raise Exception("Konnte keinen klaren Verdachtsfall im Bild erkennen.")
+                    signs = load_signs()
+                    matched_signs = find_sign_info(scene_description, signs)
+                    sign_text = "\n\n".join([
+                        f"Schild: {s.get('name', '')}\nBedeutung: {s.get('meaning', '')}\nBeschreibung: {s.get('description', '')}"
+                        for s in matched_signs
+                    ])
 
-                        # === Schritt 2: Schildinfos (optional) ===
-                        signs = load_signs()
-                        matched_signs = find_sign_info(scene_description, signs)
-                        sign_text = "\n\n".join([
-                            f"Schild: {s.get('name', '')}\nBedeutung: {s.get('meaning', '')}\nBeschreibung: {s.get('description', '')}"
-                            for s in matched_signs
-                        ])
+                    rules = load_rules()
+                    relevant = find_relevant_rules_semantic(scene_description, rules, top_k=3)
+                    relevant_text = "\n\n".join([
+                        f"{r.get('paragraph', '')} – {r.get('title', '')}\nBußgeld: {r.get('fine', '')}, Punkte: {r.get('points', '')}, Fahrverbot: {r.get('driving_ban', '')}"
+                        for r in relevant
+                    ]) or f"Keine spezifische Regel zu '{scene_description}' gefunden."
 
-                        # === GEÄNDERT: Schritt 3: RAG-Suche mit "General-Schlüssel" ===
-                        rules = load_rules()
-                        relevant = find_relevant_rules_semantic(scene_description, rules, top_k=3)
+                    result_de, result_en = analyze_image_with_llm(file_path, relevant_text, sign_text)
 
-                        relevant_text = "\n\n".join([
-                            f"{r.get('paragraph', '')} – {r.get('title', '')}\nBußgeld: {r.get('fine', '')}, Punkte: {r.get('points', '')}, Fahrverbot: {r.get('driving_ban', '')}"
-                            for r in relevant
-                        ])
+                # === FALL 2: VIDEO ===
+                elif file_ext in ALLOWED_VIDEOS:
+                    video_path = f"/{file_path}"  # <— NEU hinzugefügt: zeigt Video im Template an
+                    scenes = extract_scenes(file_path, segment_len_sec=3.0, max_seconds=15.0)
+                    frames = [f"/uploads/{os.path.basename(p)}" for _, p in scenes]
 
-                        if not relevant:
-                            relevant_text = f"Keine spezifische Regel in der Datenbank für '{scene_description}' gefunden."
-
-                        # === Schritt 4: Analyse starten ===
-                        result_de, result_en = analyze_image_with_llm(image_path, relevant_text, sign_text)
-
-                    # === FALL 2: VIDEO ===
-                    elif file_ext in ALLOWED_VIDEOS:
-                        # Option A: ALLE Szenen (z. B. alle 3s bis max. 15s ⇒ bis zu 5 Szenen)
-                        scenes = extract_scenes(file_path, segment_len_sec=3.0, max_seconds=15.0)
-                        temp_files_to_clean.extend([p for _, p in scenes])  # Szenenbilder zum Löschen vormerken
-
-                        if not scenes:
-                            error = "Video konnte nicht in Szenen zerlegt werden."
-                        else:
-                            de_all = []
-                            en_all = []
-
-                            # (Optional: Um Dopplungen zu vermeiden, wenn Verstoß über Szenen geht)
-                            # seen_violations = set()
-
-                            for t_sec, scene_img in scenes:
-
-                                # === GEÄNDERT: Schritt 1: Benutze "General-Schlüssel" ===
-                                scene_description = get_scene_description(scene_img)
-
-                                # Wenn die Szene nichts Relevantes enthält, überspringen
-                                if scene_description == "unbekannt":
-                                    continue
-
-                                    # (Optional: if scene_description in seen_violations: continue)
-                                # seen_violations.add(scene_description)
-
-                                # === Schritt 2: Schildinfos (optional) ===
-                                signs = load_signs()
-                                matched_signs = find_sign_info(scene_description, signs)
-                                sign_text = "\n\n".join([
-                                    f"Schild: {s.get('name', '')}\nBedeutung: {s.get('meaning', '')}\nBeschreibung: {s.get('description', '')}"
-                                    for s in matched_signs
-                                ])
-
-                                # === GEÄNDERT: Schritt 3: RAG-Suche mit "General-Schlüssel" ===
-                                rules = load_rules()
-                                relevant = find_relevant_rules_semantic(scene_description, rules, top_k=3)
-                                relevant_text = "\n\n".join([
-                                    f"{r.get('paragraph', '')} – {r.get('title', '')}\nBußgeld: {r.get('fine', '')}, Punkte: {r.get('points', '')}, Fahrverbot: {r.get('driving_ban', '')}"
-                                    for r in relevant
-                                ])
-
-                                if not relevant:
-                                    relevant_text = f"Keine spezifische Regel in der Datenbank für '{scene_description}' gefunden."
-
-                                # === Schritt 4: Analyse starten ===
-                                de_seg, en_seg = analyze_image_with_llm(scene_img, relevant_text, sign_text)
-
-                                # Nur Ergebnisse hinzufügen, die einen Verstoß melden
-                                if "Kein erkennbarer Regelverstoß" not in de_seg:
-                                    de_all.append(
-                                        f"<b>Szene @ {t_sec}s</b> (Verdacht: {scene_description})<br>{de_seg}")
-                                    en_all.append(
-                                        f"<b>Scene @ {t_sec}s</b> (Suspicion: {scene_description})<br>{en_seg}")
-
-                            # Gesamtausgabe zusammenführen (untereinander)
-                            if not de_all:
-                                error = "Video analysiert: Konnte in keiner Szene einen klaren Regelverstoß finden."
-                            else:
-                                result_de = "<hr>".join(de_all)
-                                result_en = "<hr>".join(en_all)
-
-
+                    if not frames:
+                        error = "Video konnte nicht in Szenen zerlegt werden."
                     else:
-                        error = f"Nicht unterstützter Dateityp ({file_ext}). Bitte .png, .jpg, .mp4, .mov etc. hochladen."
+                        de_all, en_all = [], []
+                        for t_sec, scene_img in scenes:
+                            scene_description = get_scene_description(scene_img)
+                            if scene_description == "unbekannt":
+                                continue
 
-                except requests.exceptions.Timeout:
-                    error = "⚠️ Der Analyse-Server reagiert zu langsam (Timeout). Bitte später erneut versuchen."
-                except Exception as e:
-                    error = f"Ein interner Fehler ist aufgetreten: {str(e)}"
+                            signs = load_signs()
+                            matched_signs = find_sign_info(scene_description, signs)
+                            sign_text = "\n\n".join([
+                                f"Schild: {s.get('name', '')}\nBedeutung: {s.get('meaning', '')}\nBeschreibung: {s.get('description', '')}"
+                                for s in matched_signs
+                            ])
 
-                finally:
-                    # Am Ende alle temporären Dateien (Video + Szenen-JPGs) löschen
-                    for f_path in temp_files_to_clean:
-                        if os.path.exists(f_path):
-                            try:
-                                os.remove(f_path)
-                            except Exception as e:
-                                print(f"Warnung: Tmp-Datei {f_path} konnte nicht gelöscht werden: {e}")
+                            rules = load_rules()
+                            relevant = find_relevant_rules_semantic(scene_description, rules, top_k=3)
+                            relevant_text = "\n\n".join([
+                                f"{r.get('paragraph', '')} – {r.get('title', '')}\nBußgeld: {r.get('fine', '')}, Punkte: {r.get('points', '')}, Fahrverbot: {r.get('driving_ban', '')}"
+                                for r in relevant
+                            ])
 
-    return render_template("index.html", result_de=result_de, result_en=result_en, error=error)
+                            de_seg, en_seg = analyze_image_with_llm(scene_img, relevant_text, sign_text)
+                            if "Kein erkennbarer Regelverstoß" not in de_seg:
+                                de_all.append(f"<b>Szene @ {t_sec}s</b> (Verdacht: {scene_description})<br>{de_seg}")
+                                en_all.append(f"<b>Scene @ {t_sec}s</b> (Suspicion: {scene_description})<br>{en_seg}")
+
+                        if de_all:
+                            result_de, result_en = "<hr>".join(de_all), "<hr>".join(en_all)
+                        else:
+                            error = "Keine klaren Regelverstöße im Video erkannt."
+
+                else:
+                    error = f"Nicht unterstützter Dateityp ({file_ext})."
+
+            except requests.exceptions.Timeout:
+                error = "⚠️ Der Analyse-Server reagiert zu langsam (Timeout)."
+            except Exception as e:
+                error = f"Ein interner Fehler ist aufgetreten: {str(e)}"
+
+    return render_template(
+        "index.html",
+        result_de=result_de,
+        result_en=result_en,
+        frames=frames,
+        uploaded_image=uploaded_image,
+        video_path=video_path,  # <— NEU hinzugefügt
+        error=error
+    )
+
+# ==== Wichtig: Damit die Bilder/Videos im Browser angezeigt werden können ====
+@app.route("/uploads/<path:filename>")
+def serve_upload(filename):
+    from flask import send_from_directory
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+# =========================
+#   NEU (EINGEBAUT): META-ANALYSE-MODUL
+#   -> Bewertet JEDE Regel und JEDES Zeichen mit Scores + Aggregaten
+#   (Ohne bestehende Logik zu ändern)
+# =========================
+from dataclasses import dataclass, asdict, field
+from typing import List, Dict, Any, Optional, Protocol, Tuple
+from enum import Enum
+from collections import defaultdict, Counter
+from statistics import mean
+import csv
+import math
+
+# --- Domain-Modelle für Meta-Analyse ---
+class Evidence(Protocol):
+    source_id: str
+    text: str
+    score: float
+    url: Optional[str]
+
+class Retriever(Protocol):
+    def fetch(self, query: str, top_k: int = 5) -> List[Evidence]:
+        ...
+
+@dataclass
+class RuleItem:
+    id: str
+    title: str
+    paragraph: Optional[str] = None
+    category: Optional[str] = None
+    penalty_eur: Optional[float] = None
+    points_flensburg: Optional[int] = None
+    driving_ban_months: Optional[int] = None
+
+@dataclass
+class SignItem:
+    id: str
+    title: str
+    code: Optional[str] = None
+    category: Optional[str] = None
+
+class SeverityBand(Enum):
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+
+@dataclass
+class ScoreBreakdown:
+    legal_severity: float
+    interpretive_ambiguity: float
+    detection_confidence: float
+    penalty_magnitude: float
+    frequency_exposure: float
+    conflict_density: float
+    recency_change: float
+    evidence_strength: float
+
+    def as_dict(self) -> Dict[str, float]:
+        return asdict(self)
+
+@dataclass
+class ItemResult:
+    id: str
+    kind: str
+    title: str
+    category: Optional[str]
+    score: float
+    components: ScoreBreakdown
+    severity_band: SeverityBand
+    evidence: List[Dict[str, Any]]
+    rationale: str
+
+@dataclass
+class MetaReport:
+    summary: Dict[str, Any]
+    per_item: List[ItemResult]
+    aggregates_by_category: Dict[str, Dict[str, Any]]
+
+# --- Weights & Helper ---
+@dataclass
+class Weights:
+    legal_severity: float = 0.18
+    interpretive_ambiguity: float = 0.12
+    detection_confidence: float = 0.16
+    penalty_magnitude: float = 0.18
+    frequency_exposure: float = 0.14
+    conflict_density: float = 0.10
+    recency_change: float = 0.06
+    evidence_strength: float = 0.06
+
+    def vector(self) -> Dict[str, float]:
+        v = asdict(self)
+        total = sum(v.values())
+        return {k: (w/total if total else 0.0) for k, w in v.items()}
+
+def _sigmoid(x: float) -> float:
+    return 1 / (1 + math.exp(-x))
+
+def normalize_penalty(eur: Optional[float], points: Optional[int], bans: Optional[int]) -> float:
+    if eur is None and points is None and bans is None:
+        return 0.3
+    eur_comp = min((eur or 0.0) / 600.0, 1.0)
+    points_comp = min((points or 0) / 3.0, 1.0)
+    bans_comp = min((bans or 0) / 3.0, 1.0)
+    return 0.5 * eur_comp + 0.3 * points_comp + 0.2 * bans_comp
+
+def severity_band(score: float) -> SeverityBand:
+    if score >= 0.66:
+        return SeverityBand.HIGH
+    if score >= 0.33:
+        return SeverityBand.MEDIUM
+    return SeverityBand.LOW
+
+@dataclass
+class SimpleEvidence:
+    source_id: str
+    text: str
+    score: float
+    url: Optional[str] = None
+
+class NoopRetriever:
+    def fetch(self, query: str, top_k: int = 5) -> List[Evidence]:
+        return []
+
+# --- Scoring-Kontext (optional telemetry aus deiner Pipeline) ---
+@dataclass
+class ScoringContext:
+    sign_detection_rates: Dict[str, float] = field(default_factory=dict)   # 0..1
+    rule_trigger_frequency: Dict[str, float] = field(default_factory=dict) # 0..1
+    conflict_graph_degree: Dict[str, float] = field(default_factory=dict)  # 0..1
+    recency_change_flags: Dict[str, float] = field(default_factory=dict)   # 0..1
+
+# --- Retriever-Adapter auf deine bestehende Multifield-Suche ---
+class RagRetriever:
+    """
+    Verwendet _retrieve_multifield(...) als "Evidenzquelle":
+    - query -> holt top_k Regeln (title/desc/keywords) und baut evidences mit Scores
+    """
+    def fetch(self, query: str, top_k: int = 5) -> List[Evidence]:
+        rules = _load_rules_in_order()
+        hits = _retrieve_multifield(query, top_k=top_k)
+        # mappe zurück auf _rid für "score" -> wir nutzen Position als abgeleiteten Score (einfach)
+        evidences = []
+        for rank, r in enumerate(hits, start=1):
+            # Simple Rang-Score (1.0, 0.9, 0.8, ...)
+            score = max(0.0, 1.0 - 0.1*(rank-1))
+            txt = f"{r.get('paragraph','')} – {r.get('title','')}"
+            evidences.append(SimpleEvidence(
+                source_id=str(r.get('_rid', rank)),
+                text=txt,
+                score=score,
+                url=None
+            ))
+        return evidences
+
+# --- Kern-Scoring ---
+def score_item(
+    *,
+    kind: str,
+    obj_id: str,
+    title: str,
+    category: Optional[str],
+    penalty_eur: Optional[float],
+    points: Optional[int],
+    bans: Optional[int],
+    retriever: Retriever,
+    ctx: ScoringContext,
+    weights: Weights,
+    query_boost: Optional[str] = None,
+) -> ItemResult:
+    base_query = f"StVO {title} {obj_id} {category or ''} {query_boost or ''}".strip()
+    ev = retriever.fetch(base_query, top_k=7) or []
+
+    if ev:
+        raw_scores = [e.score for e in ev[:3]]
+        ev_strength = mean([_sigmoid(s / (raw_scores[0] or 1.0)) for s in raw_scores])
+    else:
+        ev_strength = 0.2
+
+    det_key = obj_id if kind == "sign" else title
+    detection_confidence = ctx.sign_detection_rates.get(det_key, 0.6 if kind == "sign" else 0.7)
+    freq = ctx.rule_trigger_frequency.get(det_key, 0.5)
+    conflict = ctx.conflict_graph_degree.get(det_key, 0.3)
+    recency = ctx.recency_change_flags.get(det_key, 0.05)
+
+    ambiguity = max(0.0, min(1.0, 0.6*conflict + 0.3*(1-ev_strength) + 0.1*(1-detection_confidence)))
+    penalty_mag = normalize_penalty(penalty_eur, points, bans)
+    cat_bonus = 0.1 if (category or '').lower() in {"vorfahrt", "geschwindigkeit", "lichtzeichen", "alkohol"} else 0.0
+    legal_sev = max(0.0, min(1.0, 0.7*penalty_mag + cat_bonus))
+
+    components = ScoreBreakdown(
+        legal_severity=legal_sev,
+        interpretive_ambiguity=ambiguity,
+        detection_confidence=detection_confidence,
+        penalty_magnitude=penalty_mag,
+        frequency_exposure=freq,
+        conflict_density=conflict,
+        recency_change=recency,
+        evidence_strength=ev_strength,
+    )
+
+    w = weights.vector()
+    overall = sum([
+        components.legal_severity * w["legal_severity"],
+        components.interpretive_ambiguity * w["interpretive_ambiguity"],
+        components.detection_confidence * w["detection_confidence"],
+        components.penalty_magnitude * w["penalty_magnitude"],
+        components.frequency_exposure * w["frequency_exposure"],
+        components.conflict_density * w["conflict_density"],
+        components.recency_change * w["recency_change"],
+        components.evidence_strength * w["evidence_strength"],
+    ])
+
+    sev = severity_band(overall)
+    rationale = (
+        f"Gesamtscore {overall:.2f} ({sev.name}). "
+        f"Strafmaß={components.penalty_magnitude:.2f}, rechtl. Schwere={components.legal_severity:.2f}, "
+        f"Erkennung={components.detection_confidence:.2f}, Ambiguität={components.interpretive_ambiguity:.2f}, "
+        f"Konfliktdichte={components.conflict_density:.2f}, Häufigkeit={components.frequency_exposure:.2f}, "
+        f"Aktualität={components.recency_change:.2f}, Evidenzstärke={components.evidence_strength:.2f}."
+    )
+
+    ev_list = [
+        {
+            "source_id": getattr(e, "source_id", None),
+            "score": getattr(e, "score", None),
+            "url": getattr(e, "url", None),
+            "snippet": getattr(e, "text", "")[:280],
+        }
+        for e in ev
+    ]
+
+    return ItemResult(
+        id=obj_id,
+        kind=kind,
+        title=title,
+        category=category,
+        score=overall,
+        components=components,
+        severity_band=sev,
+        evidence=ev_list,
+        rationale=rationale,
+    )
+
+def analyze_meta(
+    *,
+    rules: List[RuleItem],
+    signs: List[SignItem],
+    retriever: Optional[Retriever] = None,
+    ctx: Optional[ScoringContext] = None,
+    weights: Optional[Weights] = None,
+) -> MetaReport:
+    retriever = retriever or RagRetriever()
+    ctx = ctx or ScoringContext()
+    weights = weights or Weights()
+
+    results: List[ItemResult] = []
+
+    for r in rules:
+        res = score_item(
+            kind="rule",
+            obj_id=r.id,
+            title=r.title,
+            category=r.category,
+            penalty_eur=r.penalty_eur,
+            points=r.points_flensburg,
+            bans=r.driving_ban_months,
+            retriever=retriever,
+            ctx=ctx,
+            weights=weights,
+            query_boost=r.paragraph,
+        )
+        results.append(res)
+
+    for s in signs:
+        res = score_item(
+            kind="sign",
+            obj_id=s.id,
+            title=s.title,
+            category=s.category,
+            penalty_eur=None,
+            points=None,
+            bans=None,
+            retriever=retriever,
+            ctx=ctx,
+            weights=weights,
+            query_boost=s.code,
+        )
+        results.append(res)
+
+    by_cat: Dict[str, List[float]] = defaultdict(list)
+    for res in results:
+        key = res.category or "Unkategorisiert"
+        by_cat[key].append(res.score)
+
+    aggregates = {
+        cat: {
+            "count": len(scores),
+            "avg_score": mean(scores),
+            "high_share": sum(1 for s in scores if s >= 0.66) / len(scores),
+            "low_share": sum(1 for s in scores if s < 0.33) / len(scores),
+        }
+        for cat, scores in by_cat.items()
+    }
+
+    overall_avg = mean([r.score for r in results]) if results else 0.0
+    sev_counts = Counter([r.severity_band.name for r in results])
+
+    summary = {
+        "items": len(results),
+        "overall_avg": overall_avg,
+        "bands": dict(sev_counts),
+    }
+
+    return MetaReport(
+        summary=summary,
+        per_item=results,
+        aggregates_by_category=aggregates,
+    )
+
+# --- Loader für Meta-Analyse: nutze vorhandene JSONs ---
+def _load_rules_for_meta() -> List[RuleItem]:
+    raw = _read_rules()
+    items: List[RuleItem] = []
+    for r in raw:
+        items.append(RuleItem(
+            id=str(r.get("id", r.get("_rid", ""))),
+            title=r.get("title",""),
+            paragraph=r.get("paragraph"),
+            category=r.get("category"),
+            penalty_eur=r.get("penalty_eur") or r.get("fine_eur") or None,
+            points_flensburg=r.get("points_flensburg") or r.get("points") or None,
+            driving_ban_months=r.get("driving_ban_months") or r.get("driving_ban_months_est") or None,
+        ))
+    return items
+
+def _load_signs_for_meta() -> List[SignItem]:
+    try:
+        with open(SIGNS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = []
+    items: List[SignItem] = []
+    for s in data:
+        items.append(SignItem(
+            id=str(s.get("id", s.get("code",""))),
+            title=s.get("name") or s.get("title",""),
+            code=s.get("code"),
+            category=s.get("category"),
+        ))
+    return items
+
+# --- Serialization ---
+def meta_report_to_json(report: MetaReport) -> Dict[str, Any]:
+    return {
+        "summary": report.summary,
+        "aggregates_by_category": report.aggregates_by_category,
+        "per_item": [
+            {
+                "id": r.id,
+                "kind": r.kind,
+                "title": r.title,
+                "category": r.category,
+                "score": r.score,
+                "severity_band": r.severity_band.name,
+                "components": r.components.as_dict(),
+                "evidence": r.evidence,
+                "rationale": r.rationale,
+            }
+            for r in report.per_item
+        ],
+    }
+
+def save_meta_json(report: MetaReport, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta_report_to_json(report), f, ensure_ascii=False, indent=2)
+
+def save_meta_csv(report: MetaReport, path: str) -> None:
+    fields = [
+        "id","kind","title","category","score","severity_band",
+        "legal_severity","interpretive_ambiguity","detection_confidence","penalty_magnitude",
+        "frequency_exposure","conflict_density","recency_change","evidence_strength",
+        "rationale"
+    ]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for r in report.per_item:
+            row = {
+                "id": r.id,
+                "kind": r.kind,
+                "title": r.title,
+                "category": r.category,
+                "score": f"{r.score:.4f}",
+                "severity_band": r.severity_band.name,
+                "legal_severity": f"{r.components.legal_severity:.4f}",
+                "interpretive_ambiguity": f"{r.components.interpretive_ambiguity:.4f}",
+                "detection_confidence": f"{r.components.detection_confidence:.4f}",
+                "penalty_magnitude": f"{r.components.penalty_magnitude:.4f}",
+                "frequency_exposure": f"{r.components.frequency_exposure:.4f}",
+                "conflict_density": f"{r.components.conflict_density:.4f}",
+                "recency_change": f"{r.components.recency_change:.4f}",
+                "evidence_strength": f"{r.components.evidence_strength:.4f}",
+                "rationale": r.rationale,
+            }
+            writer.writerow(row)
+
+# --- Public Helper: sofort nutzbar in deinem Code/Notebook/Script ---
+def run_meta_analysis(out_json="report_meta.json", out_csv="report_meta.csv") -> Dict[str, Any]:
+    """
+    Führt die Meta-Analyse über ALLE Regeln & Zeichen aus (ohne App-Flows anzutasten).
+    Gibt das Summary als Dict zurück und schreibt JSON/CSV, falls Pfade gegeben.
+    """
+    rules_items = _load_rules_for_meta()
+    signs_items = _load_signs_for_meta()
+    report = analyze_meta(rules=rules_items, signs=signs_items, retriever=RagRetriever(), ctx=ScoringContext(), weights=Weights())
+    if out_json:
+        save_meta_json(report, out_json)
+    if out_csv:
+        save_meta_csv(report, out_csv)
+    return meta_report_to_json(report)
 
 
 # === Start ===
