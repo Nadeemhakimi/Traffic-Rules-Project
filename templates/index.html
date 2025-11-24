@@ -1,163 +1,433 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <title>🚦 Verkehrsregel-Erkennung mit KI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-
-  <style>
-    body {
-      background: linear-gradient(135deg, #e74c3c 0%, #f1c40f 45%, #2ecc71 100%);
-      background-attachment: fixed;
-      background-size: 200% 200%;
-      animation: bgMove 12s ease infinite;
-    }
-    @keyframes bgMove {
-      0% {background-position: 0% 50%;}
-      50% {background-position: 100% 50%;}
-      100% {background-position: 0% 50%;}
-    }
-    .glass {
-      background: rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(8px);
-    }
-    .scroll-area::-webkit-scrollbar {width: 8px;}
-    .scroll-area::-webkit-scrollbar-thumb {
-      background-color: rgba(34,197,94,0.6);
-      border-radius: 4px;
-    }
-    /* Ladeanimation */
-    .loading-overlay {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(255,255,255,0.85);
-      backdrop-filter: blur(6px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      z-index: 50;
-    }
-    .spinner {
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #22c55e;
-      border-radius: 50%;
-      width: 60px;
-      height: 60px;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% {transform: rotate(0deg);}
-      100% {transform: rotate(360deg);}
-    }
-  </style>
-
-  <script>
-    function showFileName() {
-      const input = document.getElementById('image');
-      const fileInfo = document.getElementById('file-info');
-      if (input.files.length > 0) {
-        fileInfo.textContent = "📂 Datei ausgewählt: " + input.files[0].name;
-        fileInfo.classList.remove("hidden");
-      }
-    }
-    function showLoading() {
-      document.getElementById("loading-overlay").style.display = "flex";
-    }
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StVO Traffic Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
+<body class="text-slate-800">
 
-<body class="font-sans min-h-screen flex flex-col items-center justify-center p-8">
-
-  <!-- Ladeoverlay -->
-  <div id="loading-overlay" class="loading-overlay">
-    <div class="spinner"></div>
-    <p class="mt-4 text-lg font-semibold text-gray-700">Analysiere Datei...</p>
-  </div>
-
-  <!-- === Upload-Seite === -->
-  {% if not result_de and not result_en %}
-  <div class="glass rounded-3xl shadow-xl p-10 max-w-lg w-full text-center">
-    <h1 class="text-3xl font-bold text-gray-800 mb-2">🚦 Verkehrsregel-Erkennung mit KI</h1>
-    <p class="text-gray-600 mb-8">Lade ein Bild oder Video hoch, um mögliche Verkehrsverstöße automatisch zu prüfen.</p>
-
-    <form method="POST" enctype="multipart/form-data" class="flex flex-col items-center" onsubmit="showLoading()">
-      <label for="image" class="w-full h-48 flex flex-col items-center justify-center border-2 border-dashed border-green-500 rounded-xl cursor-pointer hover:bg-green-50 transition">
-        <span class="text-gray-600">Ziehe Datei hierher oder klicke zum Auswählen</span>
-        <input type="file" name="image" id="image" accept="image/*,video/*" class="hidden" onchange="showFileName()" required>
-      </label>
-
-      <p id="file-info" class="hidden mt-3 text-sm text-gray-700 font-medium"></p>
-
-      <button type="submit" class="mt-6 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition">
-        Analysieren
-      </button>
-
-      {% if error %}
-        <div class="mt-4 text-red-700 bg-red-100 rounded-lg p-2 w-full">{{ error }}</div>
-      {% endif %}
-    </form>
-  </div>
-
-  {% else %}
-  <!-- === Analyse-Seite === -->
-  <div class="glass rounded-3xl shadow-2xl p-8 w-full max-w-6xl">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">📊 Analyseergebnisse</h1>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <!-- Linke Spalte -->
-      <div>
-        <h2 class="text-xl font-semibold text-gray-800 mb-4">🎥 Erfasste Szenen / Bild</h2>
-        <div class="scroll-area space-y-4 overflow-y-auto max-h-[70vh] pr-2">
-          {% if video_path %}
-            <video controls class="rounded-lg shadow-md border border-gray-300 mb-4 w-full max-h-[400px]">
-              <source src="{{ video_path }}" type="video/mp4">
-              Dein Browser unterstützt keine Videoanzeige.
-            </video>
-          {% endif %}
-
-          {% if frames %}
-            <div class="flex flex-wrap gap-3">
-              {% for f in frames %}
-                <img src="{{ f }}" class="rounded-lg border border-gray-200 shadow-sm max-w-[30%]">
-              {% endfor %}
+    <!-- Header -->
+    <header class="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg">
+                    <i data-lucide="shield-check" class="text-white w-7 h-7"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight" id="header-title">StVO Traffic Inspector</h1>
+                    <p class="text-xs text-slate-400 uppercase tracking-wider font-semibold" id="header-subtitle">German Traffic Law AI</p>
+                </div>
             </div>
-          {% elif uploaded_image %}
-              <img src="{{ uploaded_image }}" class="rounded-lg border border-gray-200 shadow-sm">
-          {% else %}
-              <p class="text-gray-500">Keine Frames verfügbar.</p>
-          {% endif %}
+
+            <div class="flex items-center gap-4">
+                <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                    <button onclick="inspector.setLanguage('de')" id="btn-de" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all text-slate-400 hover:text-white hover:bg-slate-700">DE</button>
+                    <button onclick="inspector.setLanguage('en')" id="btn-en" class="px-3 py-1.5 rounded-md text-xs font-bold transition-all bg-blue-600 text-white shadow-sm">EN</button>
+                </div>
+            </div>
         </div>
-      </div>
+    </header>
 
-      <!-- Rechte Spalte -->
-      <div>
-        <h2 class="text-xl font-semibold text-gray-800 mb-4">⚖️ Analyse-Ergebnisse</h2>
-        {% if result_de or result_en %}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-gray-900 text-white rounded-lg p-4 border-l-4 border-green-500 overflow-y-auto scroll-area max-h-[70vh]">
-              <h3 class="font-bold mb-2">🇩🇪 Deutsch</h3>
-              <div class="text-sm leading-relaxed">{{ result_de | safe }}</div>
+    <main class="px-4 py-8 min-h-[calc(100vh-140px)] flex flex-col items-center">
+
+        <!-- Intro Section -->
+        <div id="intro-section" class="text-center mb-8 animate-fade-in max-w-2xl">
+            <h2 class="text-3xl font-bold text-slate-800 mb-3" data-t="introTitle">German Traffic Inspector</h2>
+            <p class="text-slate-600">
+                <span data-t="introDescStart">Upload dashcam footage or photos to check for compliance with the</span>
+                <span class="font-semibold text-blue-700">Straßenverkehrs-Ordnung (StVO)</span>.
+            </p>
+        </div>
+
+        <!-- Upload Interface -->
+        <div id="upload-container" class="w-full max-w-xl transition-all duration-500">
+            <div id="drop-zone" class="relative group flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-300 rounded-2xl bg-white hover:bg-slate-50 transition-all cursor-pointer overflow-hidden">
+                <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" accept="image/*,video/*">
+
+                <div id="upload-ui" class="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4 pointer-events-none">
+                    <div class="p-4 rounded-full bg-slate-100 mb-4 group-hover:bg-blue-50 transition-colors">
+                        <i data-lucide="upload" class="w-10 h-10 text-slate-400 group-hover:text-blue-500"></i>
+                    </div>
+                    <p class="mb-2 text-lg font-semibold text-slate-700" data-t="dropMain">Drop evidence here</p>
+                    <p class="mb-4 text-sm text-slate-500" data-t="dropSub">Upload photos or videos (max 20MB)</p>
+                </div>
+
+                <!-- Loading Overlay -->
+                <div id="loading-overlay" class="hidden absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                    <i data-lucide="loader-2" class="w-12 h-12 animate-spin text-blue-500 mb-4"></i>
+                    <h3 class="text-xl font-bold" data-t="analyzing">Analyzing Scene...</h3>
+                    <p class="text-slate-300 text-sm mt-2" data-t="analyzingSub">Checking StVO Database</p>
+                </div>
             </div>
-            <div class="bg-gray-900 text-white rounded-lg p-4 border-l-4 border-green-500 overflow-y-auto scroll-area max-h-[70vh]">
-              <h3 class="font-bold mb-2">🇬🇧 English</h3>
-              <div class="text-sm leading-relaxed">{{ result_en | safe }}</div>
+        </div>
+
+        <!-- Results Interface (Single Column Layout) -->
+        <div id="results-container" class="hidden w-full max-w-4xl mt-8 animate-fade-in space-y-8">
+
+            <!-- 1. Evidence Display -->
+            <div class="bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800">
+                <div class="p-2 bg-slate-900 text-white text-sm font-bold flex items-center gap-2">
+                     <i data-lucide="eye" class="w-4 h-4"></i> <span data-t="evidenceMedia">Evidence Media</span>
+                </div>
+                <div class="flex justify-center bg-black">
+                    <img id="result-img" class="hidden w-full max-h-[500px] object-contain" />
+                    <video id="result-video" class="hidden w-full max-h-[500px] object-contain" controls></video>
+                </div>
             </div>
-          </div>
-        {% else %}
-          <p class="text-gray-500">Keine Ergebnisse verfügbar.</p>
-        {% endif %}
-      </div>
+
+            <!-- 2. Proof Frame (If Video & Violation) -->
+            <div id="proof-card" class="hidden bg-white rounded-xl overflow-hidden shadow-lg border border-red-100">
+                 <div class="p-3 bg-red-50 border-b border-red-100 font-bold text-red-800 flex items-center gap-2">
+                    <i data-lucide="camera" class="w-4 h-4"></i>
+                    <span data-t="proofFrame">Proof of Violation (Frame at Incident)</span>
+                </div>
+                <div class="bg-black p-1 flex justify-center">
+                    <img id="proof-img" class="max-h-[300px] object-contain" />
+                </div>
+            </div>
+
+            <!-- 3. Action Buttons -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="inspector.downloadPDF()" class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-xl font-bold shadow-md transition-all transform hover:-translate-y-0.5">
+                    <i data-lucide="file-text" class="w-5 h-5"></i>
+                    <span data-t="btnPdf">Download Official Notice (PDF)</span>
+                </button>
+
+                <button onclick="inspector.openAppealModal()" class="flex items-center justify-center gap-2 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-700 py-3 px-6 rounded-xl font-bold shadow-sm transition-all transform hover:-translate-y-0.5">
+                    <i data-lucide="gavel" class="w-5 h-5"></i>
+                    <span data-t="btnAppeal">Draft Appeal / Objection</span>
+                </button>
+            </div>
+
+            <!-- 4. Analysis Report -->
+            <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
+                 <!-- Verdict Banner -->
+                <div id="verdict-banner" class="p-6 flex items-center justify-between bg-slate-500 text-white">
+                    <div class="flex items-center gap-4">
+                        <div id="verdict-icon-container"></div>
+                        <div>
+                            <h2 class="text-2xl font-bold uppercase tracking-wide" id="verdict-title">Title</h2>
+                            <p class="opacity-90 font-medium text-sm" data-t="verdict">StVO Assessment</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm opacity-75 uppercase font-bold tracking-wider" data-t="safetyScore">Safety Score</div>
+                        <div class="text-3xl font-black"><span id="safety-score-val">0</span>/100</div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-6">
+                    <section>
+                        <h3 class="text-slate-900 font-bold text-lg flex items-center gap-2 mb-3">
+                            <i data-lucide="activity" class="text-blue-600 w-5 h-5"></i>
+                            <span data-t="situation">Situation Analysis</span>
+                        </h3>
+                        <p id="situation-text" class="text-slate-600 leading-relaxed"></p>
+                    </section>
+
+                    <section id="violation-detail-box" class="hidden bg-red-50 rounded-lg p-4 border border-red-100">
+                        <h3 class="text-red-900 font-bold text-lg mb-2" data-t="violationDetails">Violation Details</h3>
+                        <p id="violation-text" class="text-red-800 text-sm leading-relaxed"></p>
+                    </section>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <section>
+                            <h3 class="text-slate-900 font-bold text-lg flex items-center gap-2 mb-3">
+                                <i data-lucide="book-open" class="text-blue-600 w-5 h-5"></i>
+                                <span data-t="regulations">Applied Regulations</span>
+                            </h3>
+                            <ul id="stvo-list" class="space-y-2"></ul>
+                        </section>
+
+                        <section>
+                            <h3 class="text-slate-900 font-bold text-lg flex items-center gap-2 mb-3">
+                                <i data-lucide="map-pin" class="text-blue-600 w-5 h-5"></i>
+                                <span data-t="detectedObjects">Detected Objects</span>
+                            </h3>
+                            <div id="signs-list" class="space-y-2"></div>
+                        </section>
+                    </div>
+
+                    <button onclick="inspector.reset()" class="mt-8 w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg transition-colors" data-t="analyzeNew">
+                        Analyze Another Case
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Appeal Modal -->
+    <div id="appeal-modal" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden transform transition-all scale-95 animate-fade-in">
+            <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-lg" data-t="appealTitle">Draft Appeal / Objection</h3>
+                <button onclick="inspector.closeAppealModal()" class="hover:bg-slate-700 p-1 rounded"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-slate-500 mb-4" data-t="appealIntro">Copy this text to formally object to the generated accusation.</p>
+                <div class="bg-slate-50 p-4 rounded border border-slate-200 font-mono text-sm text-slate-700 overflow-auto max-h-60" id="appeal-text" contenteditable="true"></div>
+                <div class="mt-6 flex justify-end gap-3">
+                    <button onclick="inspector.closeAppealModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium" data-t="close">Close</button>
+                    <button onclick="inspector.copyAppeal()" class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium flex items-center gap-2">
+                        <i data-lucide="copy" class="w-4 h-4"></i> <span data-t="copy">Copy Text</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mt-8 text-center">
-      <a href="/" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition">
-        Neues Bild / Video hochladen
-      </a>
-    </div>
-  </div>
-  {% endif %}
+    <script>
+        const TRANSLATIONS = {
+            en: {
+                headerTitle: "StVO Traffic Inspector",
+                headerSubtitle: "German Traffic Law AI",
+                introTitle: "German Traffic Inspector",
+                introDescStart: "Upload dashcam footage or photos to check for compliance with the",
+                dropMain: "Drop evidence here",
+                dropSub: "Upload photos or videos (max 20MB)",
+                analyzing: "Analyzing Scene...",
+                analyzingSub: "Extracting Frames & Checking StVO",
+                verdict: "StVO Assessment",
+                violationDetected: "Violation Detected",
+                noViolation: "No Violation Detected",
+                safetyScore: "Safety Score",
+                situation: "Situation Analysis",
+                violationDetails: "Violation Details",
+                regulations: "Applied Regulations (StVO)",
+                detectedObjects: "Detected Objects",
+                noObjects: "No traffic signs detected",
+                analyzeNew: "Analyze Another Case",
+                evidenceMedia: "Evidence Media",
+                proofFrame: "Proof of Violation (Frame)",
+                btnPdf: "Download Penalty Notice (PDF)",
+                btnAppeal: "File Objection (Draft)",
+                appealTitle: "Draft Objection Letter",
+                appealIntro: "This is a generated draft based on the analysis.",
+                close: "Close",
+                copy: "Copy Text"
+            },
+            de: {
+                headerTitle: "StVO Verkehrs-Inspektor",
+                headerSubtitle: "KI für Deutsches Verkehrsrecht",
+                introTitle: "Deutscher Verkehrsrecht-Inspektor",
+                introDescStart: "Laden Sie Dashcam-Aufnahmen oder Fotos hoch, um sie auf Einhaltung der",
+                dropMain: "Beweismittel hier ablegen",
+                dropSub: "Fotos oder Videos hochladen (max 20MB)",
+                analyzing: "Szene wird analysiert...",
+                analyzingSub: "Extrahiere Bilder & Prüfe StVO",
+                verdict: "StVO Einschätzung",
+                violationDetected: "Verstoß erkannt",
+                noViolation: "Kein Verstoß erkannt",
+                safetyScore: "Sicherheits-Score",
+                situation: "Situationsanalyse",
+                violationDetails: "Details zum Verstoß",
+                regulations: "Angewandte Vorschriften (StVO)",
+                detectedObjects: "Erkannte Objekte",
+                noObjects: "Keine Verkehrszeichen erkannt",
+                analyzeNew: "Neuen Fall analysieren",
+                evidenceMedia: "Beweis-Medium",
+                proofFrame: "Beweisfoto (Einzelbild)",
+                btnPdf: "Strafbescheid herunterladen (PDF)",
+                btnAppeal: "Widerspruch einlegen (Entwurf)",
+                appealTitle: "Widerspruchs-Entwurf",
+                appealIntro: "Kopieren Sie diesen Text, um formell Widerspruch einzulegen.",
+                close: "Schließen",
+                copy: "Text kopieren"
+            }
+        };
+
+        class TrafficInspector {
+            constructor() {
+                this.lang = 'de';
+                this.currentResult = null;
+                this.analysisId = null;
+                this.init();
+            }
+
+            init() {
+                lucide.createIcons();
+                this.updateStaticText();
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                const dropZone = document.getElementById('drop-zone');
+                const fileInput = document.getElementById('file-input');
+
+                ['dragenter', 'dragover'].forEach(t => dropZone.addEventListener(t, (e) => { e.preventDefault(); dropZone.classList.add('bg-blue-50', 'border-blue-500'); }));
+                ['dragleave', 'drop'].forEach(t => dropZone.addEventListener(t, (e) => { e.preventDefault(); dropZone.classList.remove('bg-blue-50', 'border-blue-500'); }));
+
+                dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]); });
+                fileInput.addEventListener('change', (e) => { if(e.target.files.length) this.handleFile(e.target.files[0]); });
+            }
+
+            setLanguage(lang) {
+                this.lang = lang;
+                document.getElementById('btn-de').className = lang === 'de' ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm" : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
+                document.getElementById('btn-en').className = lang === 'en' ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm" : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
+                this.updateStaticText();
+                if (this.currentResult) this.renderResult(this.currentResult);
+            }
+
+            updateStaticText() {
+                const t = TRANSLATIONS[this.lang];
+                document.querySelectorAll('[data-t]').forEach(el => {
+                    const key = el.getAttribute('data-t');
+                    if(t[key]) el.textContent = t[key];
+                });
+            }
+
+            async handleFile(file) {
+                if(file.size > 20 * 1024 * 1024) { alert("File too large (>20MB)"); return; }
+
+                // Set UI to loading
+                document.getElementById('upload-container').classList.add('hidden');
+                document.getElementById('results-container').classList.add('hidden');
+
+                const uploadContainer = document.getElementById('upload-container');
+                uploadContainer.classList.remove('hidden');
+                document.getElementById('loading-overlay').classList.remove('hidden');
+                document.getElementById('upload-ui').classList.add('hidden');
+
+                // Setup Preview
+                const url = URL.createObjectURL(file);
+                const isVideo = file.type.startsWith('video/');
+                if(isVideo) {
+                    document.getElementById('result-video').src = url;
+                    document.getElementById('result-video').classList.remove('hidden');
+                    document.getElementById('result-img').classList.add('hidden');
+                } else {
+                    document.getElementById('result-img').src = url;
+                    document.getElementById('result-img').classList.remove('hidden');
+                    document.getElementById('result-video').classList.add('hidden');
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/analyze', { method: 'POST', body: formData });
+                    if(!response.ok) throw new Error("Analysis failed");
+
+                    const data = await response.json();
+                    this.currentResult = data.data;
+                    this.analysisId = data.analysis_id;
+
+                    // Cleanup UI
+                    document.getElementById('upload-container').classList.add('hidden');
+                    document.getElementById('intro-section').classList.add('hidden');
+
+                    // Handle Proof Frame
+                    const proofCard = document.getElementById('proof-card');
+                    if(data.proof_frame) {
+                        proofCard.classList.remove('hidden');
+                        document.getElementById('proof-img').src = `data:image/jpeg;base64,${data.proof_frame}`;
+                    } else {
+                        proofCard.classList.add('hidden');
+                    }
+
+                    this.renderResult(this.currentResult);
+                    document.getElementById('results-container').classList.remove('hidden');
+                    document.getElementById('loading-overlay').classList.add('hidden');
+
+                } catch (error) {
+                    console.error(error);
+                    alert("Analysis Error. Please check server logs.");
+                    location.reload();
+                }
+            }
+
+            renderResult(result) {
+                const t = TRANSLATIONS[this.lang];
+                const isViolation = result.violation_detected;
+                const severity = result.severity;
+
+                // Banner Styling
+                const banner = document.getElementById('verdict-banner');
+                let color = severity === "CRITICAL" ? "bg-red-600" : severity === "WARNING" ? "bg-amber-500" : severity === "NONE" ? "bg-emerald-500" : "bg-slate-500";
+                banner.className = `p-6 flex items-center justify-between ${color} text-white`;
+
+                const iconMap = { "CRITICAL": "alert-octagon", "WARNING": "alert-triangle", "NONE": "check-circle", "UNCLEAR": "help-circle" };
+                document.getElementById('verdict-icon-container').innerHTML = `<i data-lucide="${iconMap[severity] || 'help-circle'}" class="w-8 h-8"></i>`;
+                lucide.createIcons();
+
+                // Texts
+                const title = isViolation ? (result.violation_title[this.lang] || t.violationDetected) : t.noViolation;
+                document.getElementById('verdict-title').textContent = title;
+                document.getElementById('safety-score-val').textContent = result.safety_score;
+                document.getElementById('situation-text').textContent = result.situation_summary[this.lang];
+
+                const vBox = document.getElementById('violation-detail-box');
+                if(isViolation) {
+                    vBox.classList.remove('hidden');
+                    document.getElementById('violation-text').textContent = result.violation_details[this.lang];
+                } else {
+                    vBox.classList.add('hidden');
+                }
+
+                // Lists
+                const stvoList = document.getElementById('stvo-list');
+                stvoList.innerHTML = result.stvo_references && result.stvo_references.length
+                    ? result.stvo_references.map(ref => `<li class="flex items-center gap-2 text-sm font-medium bg-slate-50 p-2 rounded"><div class="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>${ref}</li>`).join('')
+                    : `<li class="text-slate-400 italic text-sm">No regs</li>`;
+
+                const signsList = document.getElementById('signs-list');
+                signsList.innerHTML = result.detected_signs && result.detected_signs.length
+                    ? result.detected_signs.map(s => `
+                        <div class="bg-white p-3 rounded border border-slate-200 text-sm">
+                            <div class="font-bold text-slate-800">${s.code}</div>
+                            <div class="text-slate-600">${(s.name && s.name[this.lang]) || ''}</div>
+                        </div>`).join('')
+                    : `<div class="text-slate-400 text-center text-sm p-4 border-2 border-dashed rounded">${t.noObjects}</div>`;
+            }
+
+            downloadPDF() {
+                if(!this.analysisId) return;
+                // Platzhalter – Backend-Endpunkt könnte später implementiert werden
+                alert("PDF generation is not implemented in this prototype.");
+            }
+
+            openAppealModal() {
+                const modal = document.getElementById('appeal-modal');
+                const textField = document.getElementById('appeal-text');
+
+                const date = new Date().toLocaleDateString(this.lang === 'de' ? 'de-DE' : 'en-US');
+                const ref = this.analysisId ? this.analysisId.substring(0, 8).toUpperCase() : 'XXXX';
+                const violation = (this.currentResult && this.currentResult.violation_title && this.currentResult.violation_title[this.lang]) || "";
+
+                if (this.lang === 'de') {
+                    textField.innerText = `Sehr geehrte Damen und Herren,\n\nhiermit lege ich fristgerecht Widerspruch gegen den Vorwurf "${violation}" (Ref: ${ref}) vom ${date} ein.\n\nBegründung:\nNach Prüfung der Sachlage und der vorliegenden Beweismittel bin ich der Ansicht, dass der Sachverhalt nicht korrekt bewertet wurde. Insbesondere ist die Situation nicht eindeutig erkennbar / es lagen mildernde Umstände vor.\n\nIch bitte um erneute Prüfung des Vorgangs.\n\nMit freundlichen Grüßen,\n[Ihr Name]`;
+                } else {
+                    textField.innerText = `To whom it may concern,\n\nI hereby formally object to the accusation of "${violation}" (Ref: ${ref}) dated ${date}.\n\nReasoning:\nUpon reviewing the evidence, I believe the situation has been misinterpreted. Specifically, the circumstances were unclear / mitigating factors were present.\n\nI request a re-evaluation of the case.\n\nSincerely,\n[Your Name]`;
+                }
+
+                modal.classList.remove('hidden');
+            }
+
+            closeAppealModal() {
+                document.getElementById('appeal-modal').classList.add('hidden');
+            }
+
+            copyAppeal() {
+                const text = document.getElementById('appeal-text').innerText;
+                navigator.clipboard.writeText(text).then(() => alert("Text copied!"));
+            }
+
+            reset() {
+                location.reload();
+            }
+        }
+
+        const inspector = new TrafficInspector();
+    </script>
 </body>
 </html>
