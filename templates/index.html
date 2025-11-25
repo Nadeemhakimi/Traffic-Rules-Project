@@ -6,6 +6,8 @@
     <title>StVO Traffic Inspector</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- jsPDF für PDF-Generierung (Bußgeldbescheid + Widerspruch) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
@@ -58,7 +60,8 @@
                         <i data-lucide="upload" class="w-10 h-10 text-slate-400 group-hover:text-blue-500"></i>
                     </div>
                     <p class="mb-2 text-lg font-semibold text-slate-700" data-t="dropMain">Drop evidence here</p>
-                    <p class="mb-4 text-sm text-slate-500" data-t="dropSub">Upload photos or videos (max 20MB)</p>
+                    <!-- Hinweis: ohne (max 20MB) im UI -->
+                    <p class="mb-4 text-sm text-slate-500" data-t="dropSub">Upload photos or videos</p>
                 </div>
 
                 <!-- Loading Overlay -->
@@ -67,6 +70,23 @@
                     <h3 class="text-xl font-bold" data-t="analyzing">Analyzing Scene...</h3>
                     <p class="text-slate-300 text-sm mt-2" data-t="analyzingSub">Checking StVO Database</p>
                 </div>
+            </div>
+
+            <!-- File info + Analyze button -->
+            <div class="mt-4 flex items-center justify-between">
+                <div id="file-info" class="text-sm text-slate-600 hidden">
+                    <span data-t="fileSelected">Ausgewählte Datei:</span>
+                    <span id="file-name" class="font-medium break-all ml-1"></span>
+                </div>
+                <button
+                    id="analyze-btn"
+                    onclick="inspector.startAnalysis()"
+                    class="flex items-center gap-2 bg-blue-400 text-white px-5 py-2 rounded-lg font-semibold shadow-sm opacity-60 cursor-not-allowed transition-colors"
+                    disabled
+                >
+                    <i data-lucide="scan-search" class="w-4 h-4"></i>
+                    <span data-t="analyzeBtn">Analyse starten</span>
+                </button>
             </div>
         </div>
 
@@ -88,8 +108,9 @@
             <div id="proof-card" class="hidden bg-white rounded-xl overflow-hidden shadow-lg border border-red-100">
                  <div class="p-3 bg-red-50 border-b border-red-100 font-bold text-red-800 flex items-center gap-2">
                     <i data-lucide="camera" class="w-4 h-4"></i>
-                    <span data-t="proofFrame">Proof of Violation (Frame at Incident)</span>
-                </div>
+                    <!-- ohne Klammern -->
+                    <span data-t="proofFrame">Proof of Violation</span>
+                 </div>
                 <div class="bg-black p-1 flex justify-center">
                     <img id="proof-img" class="max-h-[300px] object-contain" />
                 </div>
@@ -99,12 +120,13 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button onclick="inspector.downloadPDF()" class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-xl font-bold shadow-md transition-all transform hover:-translate-y-0.5">
                     <i data-lucide="file-text" class="w-5 h-5"></i>
-                    <span data-t="btnPdf">Download Official Notice (PDF)</span>
+                    <span data-t="btnPdf">Download Penalty Notice (PDF)</span>
                 </button>
 
                 <button onclick="inspector.openAppealModal()" class="flex items-center justify-center gap-2 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-700 py-3 px-6 rounded-xl font-bold shadow-sm transition-all transform hover:-translate-y-0.5">
                     <i data-lucide="gavel" class="w-5 h-5"></i>
-                    <span data-t="btnAppeal">Draft Appeal / Objection</span>
+                    <!-- ohne "(Entwurf)" -->
+                    <span data-t="btnAppeal">File Objection</span>
                 </button>
             </div>
 
@@ -157,6 +179,11 @@
                         </section>
                     </div>
 
+                    <!-- Kleiner KI-Hinweis (DE/EN) -->
+                    <p class="mt-4 text-xs text-slate-400 leading-snug" data-t="aiNotice">
+                        Hinweis: Diese Auswertung wird automatisiert durch ein KI-System erzeugt und stellt keine Rechtsberatung oder verbindliche Entscheidung einer Behörde dar. Es wird keine Gewähr für Richtigkeit oder Vollständigkeit übernommen.
+                    </p>
+
                     <button onclick="inspector.reset()" class="mt-8 w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg transition-colors" data-t="analyzeNew">
                         Analyze Another Case
                     </button>
@@ -169,14 +196,18 @@
     <div id="appeal-modal" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden transform transition-all scale-95 animate-fade-in">
             <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
-                <h3 class="font-bold text-lg" data-t="appealTitle">Draft Appeal / Objection</h3>
+                <!-- ohne "Entwurf" -->
+                <h3 class="font-bold text-lg" data-t="appealTitle">Objection Letter</h3>
                 <button onclick="inspector.closeAppealModal()" class="hover:bg-slate-700 p-1 rounded"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-6">
-                <p class="text-sm text-slate-500 mb-4" data-t="appealIntro">Copy this text to formally object to the generated accusation.</p>
+                <p class="text-sm text-slate-500 mb-4" data-t="appealIntro">Copy or download this text to formally object to the generated accusation.</p>
                 <div class="bg-slate-50 p-4 rounded border border-slate-200 font-mono text-sm text-slate-700 overflow-auto max-h-60" id="appeal-text" contenteditable="true"></div>
                 <div class="mt-6 flex justify-end gap-3">
                     <button onclick="inspector.closeAppealModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium" data-t="close">Close</button>
+                    <button onclick="inspector.downloadAppealPDF()" class="px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg font-medium flex items-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i> <span data-t="downloadAppealPdf">Download PDF</span>
+                    </button>
                     <button onclick="inspector.copyAppeal()" class="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg font-medium flex items-center gap-2">
                         <i data-lucide="copy" class="w-4 h-4"></i> <span data-t="copy">Copy Text</span>
                     </button>
@@ -186,6 +217,109 @@
     </div>
 
     <script>
+        // Nur visuell erkennbare Verstöße (Option A)
+        const OFFENCE_CATALOG = [
+            {
+                key: "SPEEDING",
+                title: {
+                    de: "Geschwindigkeitsüberschreitung",
+                    en: "Speeding offence"
+                },
+                legal: "§3 StVO i.V.m. Bußgeldkatalog",
+                fine: 70,
+                points: 1,
+                banMonths: 0
+            },
+            {
+                key: "RED_LIGHT",
+                title: {
+                    de: "Rotlichtverstoß",
+                    en: "Red light violation"
+                },
+                legal: "§37 StVO i.V.m. Bußgeldkatalog",
+                fine: 200,
+                points: 2,
+                banMonths: 1
+            },
+            {
+                key: "DISTANCE",
+                title: {
+                    de: "Abstandsverstoß",
+                    en: "Insufficient distance"
+                },
+                legal: "§4 StVO",
+                fine: 100,
+                points: 1,
+                banMonths: 0
+            },
+            {
+                key: "RIGHT_OF_WAY",
+                title: {
+                    de: "Vorfahrt missachtet",
+                    en: "Right of way violation"
+                },
+                legal: "§8 StVO",
+                fine: 120,
+                points: 1,
+                banMonths: 0
+            },
+            {
+                key: "PEDESTRIAN",
+                title: {
+                    de: "Fußgänger gefährdet",
+                    en: "Endangering pedestrians"
+                },
+                legal: "§26 StVO",
+                fine: 80,
+                points: 1,
+                banMonths: 0
+            },
+            {
+                key: "RAILWAY",
+                title: {
+                    de: "Verstoß am Bahnübergang",
+                    en: "Railway crossing violation"
+                },
+                legal: "§19 StVO",
+                fine: 240,
+                points: 2,
+                banMonths: 1
+            },
+            {
+                key: "SEATBELT",
+                title: {
+                    de: "Sicherheitsgurt nicht angelegt",
+                    en: "Seat belt not fastened"
+                },
+                legal: "§21a StVO",
+                fine: 30,
+                points: 0,
+                banMonths: 0
+            },
+            {
+                key: "MOBILE",
+                title: {
+                    de: "Handy am Steuer",
+                    en: "Mobile phone while driving"
+                },
+                legal: "§23 Abs. 1a StVO",
+                fine: 100,
+                points: 1,
+                banMonths: 0
+            },
+            {
+                key: "GENERIC",
+                title: {
+                    de: "Verstoß gegen die StVO",
+                    en: "Violation of the German Road Traffic Regulations"
+                },
+                legal: "StVO i.V.m. Bußgeldkatalog",
+                fine: 55,
+                points: 0,
+                banMonths: 0
+            }
+        ];
+
         const TRANSLATIONS = {
             en: {
                 headerTitle: "StVO Traffic Inspector",
@@ -193,9 +327,9 @@
                 introTitle: "German Traffic Inspector",
                 introDescStart: "Upload dashcam footage or photos to check for compliance with the",
                 dropMain: "Drop evidence here",
-                dropSub: "Upload photos or videos (max 20MB)",
+                dropSub: "Upload photos or videos",
                 analyzing: "Analyzing Scene...",
-                analyzingSub: "Extracting Frames & Checking StVO",
+                analyzingSub: "Checking StVO Database",
                 verdict: "StVO Assessment",
                 violationDetected: "Violation Detected",
                 noViolation: "No Violation Detected",
@@ -207,13 +341,20 @@
                 noObjects: "No traffic signs detected",
                 analyzeNew: "Analyze Another Case",
                 evidenceMedia: "Evidence Media",
-                proofFrame: "Proof of Violation (Frame)",
+                // ohne Klammern
+                proofFrame: "Proof of Violation",
                 btnPdf: "Download Penalty Notice (PDF)",
-                btnAppeal: "File Objection (Draft)",
-                appealTitle: "Draft Objection Letter",
-                appealIntro: "This is a generated draft based on the analysis.",
+                // ohne "Draft"
+                btnAppeal: "File Objection",
+                // ohne "Draft"
+                appealTitle: "Objection Letter",
+                appealIntro: "Copy or download this text to formally object to the generated accusation.",
                 close: "Close",
-                copy: "Copy Text"
+                copy: "Copy Text",
+                downloadAppealPdf: "Download PDF",
+                aiNotice: "Note: This analysis is generated automatically by an AI system and does not constitute legal advice or a binding decision by any public authority. No guarantee is given for accuracy or completeness; in case of doubt, only official decisions by authorities and courts are legally relevant.",
+                analyzeBtn: "Start Analysis",
+                fileSelected: "Selected file:"
             },
             de: {
                 headerTitle: "StVO Verkehrs-Inspektor",
@@ -221,10 +362,10 @@
                 introTitle: "Deutscher Verkehrsrecht-Inspektor",
                 introDescStart: "Laden Sie Dashcam-Aufnahmen oder Fotos hoch, um sie auf Einhaltung der",
                 dropMain: "Beweismittel hier ablegen",
-                dropSub: "Fotos oder Videos hochladen (max 20MB)",
+                dropSub: "Fotos oder Videos hochladen",
                 analyzing: "Szene wird analysiert...",
-                analyzingSub: "Extrahiere Bilder & Prüfe StVO",
-                verdict: "StVO Einschätzung",
+                analyzingSub: "Extrahiere Bilder & prüfe StVO",
+                verdict: "StVO-Einschätzung",
                 violationDetected: "Verstoß erkannt",
                 noViolation: "Kein Verstoß erkannt",
                 safetyScore: "Sicherheits-Score",
@@ -235,13 +376,19 @@
                 noObjects: "Keine Verkehrszeichen erkannt",
                 analyzeNew: "Neuen Fall analysieren",
                 evidenceMedia: "Beweis-Medium",
-                proofFrame: "Beweisfoto (Einzelbild)",
-                btnPdf: "Strafbescheid herunterladen (PDF)",
-                btnAppeal: "Widerspruch einlegen (Entwurf)",
-                appealTitle: "Widerspruchs-Entwurf",
-                appealIntro: "Kopieren Sie diesen Text, um formell Widerspruch einzulegen.",
+                // ohne Klammern
+                proofFrame: "Beweisfoto",
+                btnPdf: "Bußgeldbescheid herunterladen (PDF)",
+                // ohne "(Entwurf)"
+                btnAppeal: "Widerspruch einlegen",
+                appealTitle: "Widerspruchsschreiben",
+                appealIntro: "Kopieren oder laden Sie diesen Text herunter, um formell Widerspruch einzulegen.",
                 close: "Schließen",
-                copy: "Text kopieren"
+                copy: "Text kopieren",
+                downloadAppealPdf: "PDF herunterladen",
+                aiNotice: "Hinweis: Diese Auswertung wird automatisiert durch ein KI-System erzeugt und stellt weder Rechtsberatung noch einen verbindlichen Bescheid einer Behörde dar. Für Richtigkeit und Vollständigkeit wird keine Gewähr übernommen; im Zweifel maßgeblich sind ausschließlich die Entscheidungen der zuständigen Behörden und Gerichte.",
+                analyzeBtn: "Analyse starten",
+                fileSelected: "Ausgewählte Datei:"
             }
         };
 
@@ -250,6 +397,9 @@
                 this.lang = 'de';
                 this.currentResult = null;
                 this.analysisId = null;
+                this.proofFrame = null;    // Base64 des Beweisfotos
+                this.penalty = null;       // berechnetes Bußgeld-Objekt
+                this.selectedFile = null;  // zuletzt hochgeladene Datei
                 this.init();
             }
 
@@ -263,17 +413,33 @@
                 const dropZone = document.getElementById('drop-zone');
                 const fileInput = document.getElementById('file-input');
 
-                ['dragenter', 'dragover'].forEach(t => dropZone.addEventListener(t, (e) => { e.preventDefault(); dropZone.classList.add('bg-blue-50', 'border-blue-500'); }));
-                ['dragleave', 'drop'].forEach(t => dropZone.addEventListener(t, (e) => { e.preventDefault(); dropZone.classList.remove('bg-blue-50', 'border-blue-500'); }));
+                ['dragenter', 'dragover'].forEach(t => dropZone.addEventListener(t, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('bg-blue-50', 'border-blue-500');
+                }));
+                ['dragleave', 'drop'].forEach(t => dropZone.addEventListener(t, (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('bg-blue-50', 'border-blue-500');
+                }));
 
-                dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]); });
-                fileInput.addEventListener('change', (e) => { if(e.target.files.length) this.handleFile(e.target.files[0]); });
+                dropZone.addEventListener('drop', (e) => {
+                    if (e.dataTransfer.files.length) this.handleFile(e.dataTransfer.files[0]);
+                });
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length) this.handleFile(e.target.files[0]);
+                });
             }
 
             setLanguage(lang) {
                 this.lang = lang;
-                document.getElementById('btn-de').className = lang === 'de' ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm" : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
-                document.getElementById('btn-en').className = lang === 'en' ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm" : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
+                document.getElementById('btn-de').className =
+                    lang === 'de'
+                        ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm"
+                        : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
+                document.getElementById('btn-en').className =
+                    lang === 'en'
+                        ? "px-3 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white shadow-sm"
+                        : "px-3 py-1.5 rounded-md text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-700";
                 this.updateStaticText();
                 if (this.currentResult) this.renderResult(this.currentResult);
             }
@@ -282,53 +448,86 @@
                 const t = TRANSLATIONS[this.lang];
                 document.querySelectorAll('[data-t]').forEach(el => {
                     const key = el.getAttribute('data-t');
-                    if(t[key]) el.textContent = t[key];
+                    if (t[key]) el.textContent = t[key];
                 });
             }
 
-            async handleFile(file) {
-                if(file.size > 20 * 1024 * 1024) { alert("File too large (>20MB)"); return; }
+            // Nur Datei merken + UI updaten, KEINE Analyse starten
+            handleFile(file) {
+                if (file.size > 20 * 1024 * 1024) {
+                    alert(this.lang === 'de'
+                        ? "Datei zu groß (>20MB)."
+                        : "File too large (>20MB).");
+                    return;
+                }
 
-                // Set UI to loading
-                document.getElementById('upload-container').classList.add('hidden');
+                this.selectedFile = file;
+
+                // Dateiname anzeigen
+                const fileInfo = document.getElementById('file-info');
+                const fileNameSpan = document.getElementById('file-name');
+                fileNameSpan.textContent = file.name;
+                fileInfo.classList.remove('hidden');
+
+                // Analyse-Button aktivieren
+                const btn = document.getElementById('analyze-btn');
+                btn.disabled = false;
+                btn.classList.remove('opacity-60', 'cursor-not-allowed', 'bg-blue-400');
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            }
+
+            // Analyse erst beim Klick auf den Button
+            async startAnalysis() {
+                if (!this.selectedFile) {
+                    alert(this.lang === 'de'
+                        ? "Bitte zuerst eine Datei hochladen."
+                        : "Please upload a file first.");
+                    return;
+                }
+
+                const file = this.selectedFile;
+
+                // UI: Loading anzeigen
                 document.getElementById('results-container').classList.add('hidden');
-
-                const uploadContainer = document.getElementById('upload-container');
-                uploadContainer.classList.remove('hidden');
                 document.getElementById('loading-overlay').classList.remove('hidden');
                 document.getElementById('upload-ui').classList.add('hidden');
 
-                // Setup Preview
-                const url = URL.createObjectURL(file);
-                const isVideo = file.type.startsWith('video/');
-                if(isVideo) {
-                    document.getElementById('result-video').src = url;
-                    document.getElementById('result-video').classList.remove('hidden');
-                    document.getElementById('result-img').classList.add('hidden');
-                } else {
-                    document.getElementById('result-img').src = url;
-                    document.getElementById('result-img').classList.remove('hidden');
-                    document.getElementById('result-video').classList.add('hidden');
-                }
+                const analyzeBtn = document.getElementById('analyze-btn');
+                analyzeBtn.disabled = true;
+                analyzeBtn.classList.add('opacity-60', 'cursor-not-allowed');
 
                 const formData = new FormData();
                 formData.append('file', file);
 
                 try {
                     const response = await fetch('/analyze', { method: 'POST', body: formData });
-                    if(!response.ok) throw new Error("Analysis failed");
+                    if (!response.ok) throw new Error("Analysis failed");
 
                     const data = await response.json();
                     this.currentResult = data.data;
                     this.analysisId = data.analysis_id;
+                    this.proofFrame = data.proof_frame || null;
 
-                    // Cleanup UI
+                    // Vorschau erst JETZT setzen
+                    const url = URL.createObjectURL(file);
+                    const isVideo = file.type.startsWith('video/');
+                    if (isVideo) {
+                        document.getElementById('result-video').src = url;
+                        document.getElementById('result-video').classList.remove('hidden');
+                        document.getElementById('result-img').classList.add('hidden');
+                    } else {
+                        document.getElementById('result-img').src = url;
+                        document.getElementById('result-img').classList.remove('hidden');
+                        document.getElementById('result-video').classList.add('hidden');
+                    }
+
+                    // Upload-Bereich & Intro ausblenden
                     document.getElementById('upload-container').classList.add('hidden');
                     document.getElementById('intro-section').classList.add('hidden');
 
-                    // Handle Proof Frame
+                    // Proof Frame
                     const proofCard = document.getElementById('proof-card');
-                    if(data.proof_frame) {
+                    if (data.proof_frame) {
                         proofCard.classList.remove('hidden');
                         document.getElementById('proof-img').src = `data:image/jpeg;base64,${data.proof_frame}`;
                     } else {
@@ -341,9 +540,59 @@
 
                 } catch (error) {
                     console.error(error);
-                    alert("Analysis Error. Please check server logs.");
+                    alert(this.lang === 'de'
+                        ? "Analysefehler. Bitte Server-Logs prüfen."
+                        : "Analysis error. Please check server logs.");
                     location.reload();
                 }
+            }
+
+            computePenalty(result) {
+                // Kein Verstoß -> kein Bußgeld
+                if (!result || !result.violation_detected) {
+                    return {
+                        key: "NONE",
+                        title: {
+                            de: "Kein Verstoß",
+                            en: "No violation"
+                        },
+                        legal: "",
+                        fine: 0,
+                        points: 0,
+                        banMonths: 0
+                    };
+                }
+
+                const refs = (result.stvo_references || []).join(" ").toLowerCase();
+                const textAll = (
+                    (result.violation_title?.de || "") + " " +
+                    (result.violation_title?.en || "") + " " +
+                    (result.violation_details?.de || "") + " " +
+                    (result.violation_details?.en || "")
+                ).toLowerCase();
+
+                let selected = OFFENCE_CATALOG.find(o => o.key === "GENERIC");
+
+                // Heuristische Zuordnung nach Paragraphen & Keywords
+                if (refs.includes("§3") || textAll.includes("geschwind") || textAll.includes("speed") || textAll.includes("tempo")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "SPEEDING") || selected;
+                } else if (refs.includes("§37") || textAll.includes("ampel") || textAll.includes("red light") || textAll.includes("rotlicht")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "RED_LIGHT") || selected;
+                } else if (refs.includes("§4 stvo") || textAll.includes("abstand")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "DISTANCE") || selected;
+                } else if (refs.includes("§8") || textAll.includes("vorfahrt")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "RIGHT_OF_WAY") || selected;
+                } else if (refs.includes("§26") || textAll.includes("fußgänger") || textAll.includes("pedestrian")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "PEDESTRIAN") || selected;
+                } else if (refs.includes("§19") || textAll.includes("bahnübergang") || textAll.includes("railway")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "RAILWAY") || selected;
+                } else if (refs.includes("§21a") || textAll.includes("gurt") || textAll.includes("seat belt")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "SEATBELT") || selected;
+                } else if (refs.includes("§23") || textAll.includes("handy") || textAll.includes("phone")) {
+                    selected = OFFENCE_CATALOG.find(o => o.key === "MOBILE") || selected;
+                }
+
+                return selected;
             }
 
             renderResult(result) {
@@ -351,23 +600,38 @@
                 const isViolation = result.violation_detected;
                 const severity = result.severity;
 
+                // Bußgeld berechnen
+                this.penalty = this.computePenalty(result);
+
                 // Banner Styling
                 const banner = document.getElementById('verdict-banner');
-                let color = severity === "CRITICAL" ? "bg-red-600" : severity === "WARNING" ? "bg-amber-500" : severity === "NONE" ? "bg-emerald-500" : "bg-slate-500";
+                let color =
+                    severity === "CRITICAL" ? "bg-red-600" :
+                    severity === "WARNING" ? "bg-amber-500" :
+                    severity === "NONE" ? "bg-emerald-500" :
+                    "bg-slate-500";
                 banner.className = `p-6 flex items-center justify-between ${color} text-white`;
 
-                const iconMap = { "CRITICAL": "alert-octagon", "WARNING": "alert-triangle", "NONE": "check-circle", "UNCLEAR": "help-circle" };
-                document.getElementById('verdict-icon-container').innerHTML = `<i data-lucide="${iconMap[severity] || 'help-circle'}" class="w-8 h-8"></i>`;
+                const iconMap = {
+                    "CRITICAL": "alert-octagon",
+                    "WARNING": "alert-triangle",
+                    "NONE": "check-circle",
+                    "UNCLEAR": "help-circle"
+                };
+                document.getElementById('verdict-icon-container').innerHTML =
+                    `<i data-lucide="${iconMap[severity] || 'help-circle'}" class="w-8 h-8"></i>`;
                 lucide.createIcons();
 
                 // Texts
-                const title = isViolation ? (result.violation_title[this.lang] || t.violationDetected) : t.noViolation;
+                const title = isViolation
+                    ? (result.violation_title[this.lang] || t.violationDetected)
+                    : t.noViolation;
                 document.getElementById('verdict-title').textContent = title;
                 document.getElementById('safety-score-val').textContent = result.safety_score;
                 document.getElementById('situation-text').textContent = result.situation_summary[this.lang];
 
                 const vBox = document.getElementById('violation-detail-box');
-                if(isViolation) {
+                if (isViolation) {
                     vBox.classList.remove('hidden');
                     document.getElementById('violation-text').textContent = result.violation_details[this.lang];
                 } else {
@@ -377,23 +641,258 @@
                 // Lists
                 const stvoList = document.getElementById('stvo-list');
                 stvoList.innerHTML = result.stvo_references && result.stvo_references.length
-                    ? result.stvo_references.map(ref => `<li class="flex items-center gap-2 text-sm font-medium bg-slate-50 p-2 rounded"><div class="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>${ref}</li>`).join('')
+                    ? result.stvo_references.map(ref =>
+                        `<li class="flex items-center gap-2 text-sm font-medium bg-slate-50 p-2 rounded">
+                            <div class="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>${ref}
+                        </li>`).join('')
                     : `<li class="text-slate-400 italic text-sm">No regs</li>`;
 
                 const signsList = document.getElementById('signs-list');
+                const lang = this.lang;
+
                 signsList.innerHTML = result.detected_signs && result.detected_signs.length
-                    ? result.detected_signs.map(s => `
-                        <div class="bg-white p-3 rounded border border-slate-200 text-sm">
-                            <div class="font-bold text-slate-800">${s.code}</div>
-                            <div class="text-slate-600">${(s.name && s.name[this.lang]) || ''}</div>
-                        </div>`).join('')
+                    ? result.detected_signs.map(s => {
+                        let nameDe = "";
+                        let nameEn = "";
+
+                        if (s.name) {
+                            if (typeof s.name === "string") {
+                                nameDe = s.name;
+                                nameEn = s.name;
+                            } else {
+                                nameDe = s.name.de || s.name["de-DE"] || "";
+                                nameEn = s.name.en || s.name["en-US"] || "";
+                            }
+                        }
+
+                        let primary, secondary;
+
+                        if (lang === 'de') {
+                            // Oben: deutscher Code/Name, unten: Beschreibung
+                            primary = s.code || nameDe || nameEn;
+                            secondary = nameDe || nameEn;
+                        } else {
+                            // Englisch: oben die englische Bezeichnung, unten der deutsche Code
+                            primary = nameEn || s.code || nameDe;
+                            secondary = s.code || "";
+                        }
+
+                        const secondaryHtml = secondary
+                            ? `<div class="text-slate-600">${secondary}</div>`
+                            : "";
+
+                        return `
+                            <div class="bg-white p-3 rounded border border-slate-200 text-sm">
+                                <div class="font-bold text-slate-800">${primary}</div>
+                                ${secondaryHtml}
+                            </div>`;
+                    }).join('')
                     : `<div class="text-slate-400 text-center text-sm p-4 border-2 border-dashed rounded">${t.noObjects}</div>`;
             }
 
             downloadPDF() {
-                if(!this.analysisId) return;
-                // Platzhalter – Backend-Endpunkt könnte später implementiert werden
-                alert("PDF generation is not implemented in this prototype.");
+                if (!this.currentResult) return;
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: "mm", format: "a4" });
+
+                // Warmes Papier wie deutscher Bescheid
+                doc.setFillColor(247, 242, 235);   // leicht warmes Beige
+                doc.rect(0, 0, 210, 297, "F");
+                doc.setTextColor(20, 20, 20);
+
+                const t = TRANSLATIONS[this.lang];
+
+                const today = new Date();
+                const deadline = new Date();
+                // Zahlungsfrist 14 Tage
+                deadline.setDate(today.getDate() + 14);
+
+                const formatDate = (d) =>
+                    this.lang === 'de'
+                        ? d.toLocaleDateString('de-DE')
+                        : d.toLocaleDateString('en-US');
+
+                const aktenzeichen = this.analysisId
+                    ? this.analysisId.substring(0, 10).toUpperCase()
+                    : 'AZ-XXXXXX';
+
+                const penalty = this.penalty || {
+                    fine: 0,
+                    points: 0,
+                    banMonths: 0,
+                    title: { de: "Kein Verstoß", en: "No violation" },
+                    legal: ""
+                };
+
+                const isViolation = this.currentResult.violation_detected;
+
+                // Kopf
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(14);
+                const headerText = this.lang === 'de'
+                    ? "Stadt Lüneburg – Zentrale Bußgeldstelle"
+                    : "City of Lüneburg – Central Fine Authority";
+                doc.text(headerText, 10, 15);
+
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                const addressText = this.lang === 'de'
+                    ? "Am Ochsenmarkt 1 · 21335 Lüneburg"
+                    : "Am Ochsenmarkt 1 · 21335 Lüneburg";
+                doc.text(addressText, 10, 21);
+
+                // Titel
+                doc.setFontSize(16);
+                doc.setFont("helvetica", "bold");
+                const mainTitle = this.lang === 'de'
+                    ? "Bußgeldbescheid"
+                    : "Penalty Notice";
+                doc.text(mainTitle, 105, 35, { align: "center" });
+
+                // Meta
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "normal");
+                doc.text((this.lang === 'de' ? "Aktenzeichen: " : "Reference: ") + aktenzeichen, 10, 45);
+                doc.text((this.lang === 'de' ? "Datum: " : "Date: ") + formatDate(today), 10, 51);
+
+                // Tatbestand
+                let y = 60;
+                doc.setFont("helvetica", "bold");
+                doc.text(this.lang === 'de' ? "Tatbestand" : "Offence", 10, y);
+                y += 6;
+
+                doc.setFont("helvetica", "normal");
+                const vt = this.currentResult.violation_title?.[this.lang] || "";
+                const vd = this.currentResult.violation_details?.[this.lang] || "";
+                const offenceText = isViolation
+                    ? (vt ? vt + " – " : "") + vd
+                    : (this.lang === 'de'
+                        ? "Es wurde kein konkreter, bußgeldbewährter Verstoß festgestellt."
+                        : "No specific fine-relevant offence was detected.");
+
+                const offenceLines = doc.splitTextToSize(offenceText, 190);
+                doc.text(offenceLines, 10, y);
+                y += offenceLines.length * 5 + 4;
+
+                // Rechtsgrundlagen
+                doc.setFont("helvetica", "bold");
+                doc.text(this.lang === 'de' ? "Rechtsgrundlagen" : "Legal basis", 10, y);
+                y += 6;
+                doc.setFont("helvetica", "normal");
+
+                const refs = this.currentResult.stvo_references || [];
+                const refsText = refs.length
+                    ? refs.join(", ")
+                    : (this.lang === 'de' ? "StVO, Bußgeldkatalog" : "StVO, schedule of fines");
+                const refLines = doc.splitTextToSize(refsText, 190);
+                doc.text(refLines, 10, y);
+                y += refLines.length * 5 + 4;
+
+                // Bußgeld
+                doc.setFont("helvetica", "bold");
+                doc.text(this.lang === 'de' ? "Bußgeld" : "Fine", 10, y);
+                y += 6;
+                doc.setFont("helvetica", "normal");
+
+                const fineLabel = this.lang === 'de' ? "Bußgeld" : "Fine";
+
+                const fineLine = isViolation
+                    ? (
+                        (this.lang === 'de'
+                            ? `${fineLabel}: ${penalty.fine.toFixed(0)} €`
+                            : `${fineLabel}: €${penalty.fine.toFixed(0)}`) +
+                        (penalty.points
+                            ? (this.lang === 'de'
+                                ? ` · ${penalty.points} Punkt(e) im Fahreignungsregister (Flensburg)`
+                                : ` · ${penalty.points} point(s) in the German driver registry (Flensburg)`)
+                            : "") +
+                        (penalty.banMonths
+                            ? (this.lang === 'de'
+                                ? ` · Fahrverbot: ${penalty.banMonths} Monat(e)`
+                                : ` · Driving ban: ${penalty.banMonths} month(s)`)
+                            : "")
+                    )
+                    : (this.lang === 'de'
+                        ? "Kein Bußgeld festgesetzt."
+                        : "No fine imposed.");
+                const fineLines = doc.splitTextToSize(fineLine, 190);
+                doc.text(fineLines, 10, y);
+                y += fineLines.length * 5 + 4;
+
+                // Zahlungsfrist
+                doc.setFont("helvetica", "bold");
+                doc.text(this.lang === 'de' ? "Zahlungsfrist" : "Payment deadline", 10, y);
+                y += 6;
+                doc.setFont("helvetica", "normal");
+                const deadlineText = this.lang === 'de'
+                    ? `Das Bußgeld ist bis spätestens ${formatDate(deadline)} auf das unten angegebene Konto zu überweisen.`
+                    : `The fine must be paid no later than ${formatDate(deadline)} to the bank account indicated below.`;
+                const deadlineLines = doc.splitTextToSize(deadlineText, 190);
+                doc.text(deadlineLines, 10, y);
+                y += deadlineLines.length * 5 + 4;
+
+                // Bankdaten (IBAN)
+                doc.setFont("helvetica", "bold");
+                doc.text(this.lang === 'de' ? "Zahlungsempfänger" : "Payee", 10, y);
+                y += 6;
+                doc.setFont("helvetica", "normal");
+
+                const iban = "DE12 3456 7890 1234 5678 90";
+                const bic = "LBGHDEFFXXX";
+                const empfaenger = this.lang === 'de'
+                    ? "Stadt Lüneburg – Zentrale Bußgeldstelle"
+                    : "City of Lüneburg – Central Fines Office";
+                const verwendungszweck = (this.lang === 'de' ? "Verwendungszweck: " : "Reference: ") + aktenzeichen;
+
+                const bankLines = doc.splitTextToSize(
+                    (this.lang === 'de'
+                        ? `Empfänger: ${empfaenger}\nIBAN: ${iban}\nBIC: ${bic}\n${verwendungszweck}`
+                        : `Payee: ${empfaenger}\nIBAN: ${iban}\nBIC: ${bic}\n${verwendungszweck}`),
+                    190
+                );
+                doc.text(bankLines, 10, y);
+                y += bankLines.length * 5 + 8;
+
+                // Behelfs-Hinweis (kurz)
+                const hintTitle = this.lang === 'de' ? "Rechtsbehelf" : "Legal remedy";
+                doc.setFont("helvetica", "bold");
+                doc.text(hintTitle, 10, y);
+                y += 6;
+                doc.setFont("helvetica", "normal");
+                const hintText = this.lang === 'de'
+                    ? "Gegen diesen Bescheid können Sie innerhalb von zwei Wochen nach Zustellung schriftlich oder zur Niederschrift bei der oben genannten Behörde Einspruch einlegen."
+                    : "You may lodge an objection in writing with the authority named above within two weeks after service of this notice.";
+                const hintLines = doc.splitTextToSize(hintText, 190);
+                doc.text(hintLines, 10, y);
+                y += hintLines.length * 5 + 8;
+
+                // Beweisfoto einfügen (wenn vorhanden)
+                if (this.proofFrame) {
+                    try {
+                        const imgData = "data:image/jpeg;base64," + this.proofFrame;
+                        // Platz lassen falls wir sehr weit unten sind
+                        if (y > 220) {
+                            doc.addPage();
+                            // Hintergrund auch auf neuer Seite
+                            doc.setFillColor(247, 242, 235);
+                            doc.rect(0, 0, 210, 297, "F");
+                            doc.setTextColor(20, 20, 20);
+                            y = 20;
+                        }
+                        doc.setFont("helvetica", "bold");
+                        doc.text(this.lang === 'de' ? "Beweisfoto" : "Evidence photo", 10, y);
+                        y += 4;
+
+                        doc.addImage(imgData, "JPEG", 10, y + 2, 90, 60); // einfache Größe
+                    } catch (e) {
+                        console.warn("Could not add proof image to PDF:", e);
+                    }
+                }
+
+                const filename = this.lang === 'de'
+                    ? `Bussgeldbescheid_${aktenzeichen}.pdf`
+                    : `PenaltyNotice_${aktenzeichen}.pdf`;
+                doc.save(filename);
             }
 
             openAppealModal() {
@@ -402,12 +901,28 @@
 
                 const date = new Date().toLocaleDateString(this.lang === 'de' ? 'de-DE' : 'en-US');
                 const ref = this.analysisId ? this.analysisId.substring(0, 8).toUpperCase() : 'XXXX';
-                const violation = (this.currentResult && this.currentResult.violation_title && this.currentResult.violation_title[this.lang]) || "";
+                const violation = (this.currentResult &&
+                    this.currentResult.violation_title &&
+                    this.currentResult.violation_title[this.lang]) || "";
 
                 if (this.lang === 'de') {
-                    textField.innerText = `Sehr geehrte Damen und Herren,\n\nhiermit lege ich fristgerecht Widerspruch gegen den Vorwurf "${violation}" (Ref: ${ref}) vom ${date} ein.\n\nBegründung:\nNach Prüfung der Sachlage und der vorliegenden Beweismittel bin ich der Ansicht, dass der Sachverhalt nicht korrekt bewertet wurde. Insbesondere ist die Situation nicht eindeutig erkennbar / es lagen mildernde Umstände vor.\n\nIch bitte um erneute Prüfung des Vorgangs.\n\nMit freundlichen Grüßen,\n[Ihr Name]`;
+                    textField.innerText =
+                        `Sehr geehrte Damen und Herren,\n\n` +
+                        `hiermit lege ich fristgerecht Widerspruch gegen den Vorwurf "${violation}" (Aktenzeichen: ${ref}) vom ${date} ein.\n\n` +
+                        `Begründung:\n` +
+                        `Nach Prüfung der Sachlage und der vorliegenden Beweismittel bin ich der Ansicht, dass der Sachverhalt nicht korrekt bewertet wurde. ` +
+                        `Insbesondere ist die Situation nicht eindeutig erkennbar bzw. es lagen mildernde Umstände vor.\n\n` +
+                        `Ich bitte um erneute Prüfung des Vorgangs.\n\n` +
+                        `Mit freundlichen Grüßen,\n[Ihr Name]`;
                 } else {
-                    textField.innerText = `To whom it may concern,\n\nI hereby formally object to the accusation of "${violation}" (Ref: ${ref}) dated ${date}.\n\nReasoning:\nUpon reviewing the evidence, I believe the situation has been misinterpreted. Specifically, the circumstances were unclear / mitigating factors were present.\n\nI request a re-evaluation of the case.\n\nSincerely,\n[Your Name]`;
+                    textField.innerText =
+                        `To whom it may concern,\n\n` +
+                        `I hereby formally object to the accusation of "${violation}" (Ref: ${ref}) dated ${date}.\n\n` +
+                        `Reasoning:\n` +
+                        `Upon reviewing the evidence, I believe the situation has been misinterpreted. ` +
+                        `In particular, the circumstances were unclear and/or mitigating factors were present.\n\n` +
+                        `I kindly request a re-evaluation of the case.\n\n` +
+                        `Sincerely,\n[Your Name]`;
                 }
 
                 modal.classList.remove('hidden');
@@ -419,7 +934,62 @@
 
             copyAppeal() {
                 const text = document.getElementById('appeal-text').innerText;
-                navigator.clipboard.writeText(text).then(() => alert("Text copied!"));
+                navigator.clipboard.writeText(text).then(() => {
+                    if (this.lang === 'de') {
+                        alert("Text in die Zwischenablage kopiert.");
+                    } else {
+                        alert("Text copied to clipboard.");
+                    }
+                });
+            }
+
+            downloadAppealPDF() {
+                const content = document.getElementById('appeal-text').innerText || "";
+                if (!content.trim()) return;
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: "mm", format: "a4" });
+
+                // Warmes Papier
+                doc.setFillColor(247, 242, 235);
+                doc.rect(0, 0, 210, 297, "F");
+                doc.setTextColor(20, 20, 20);
+
+                const today = new Date();
+                const formatDate = (d) =>
+                    this.lang === 'de'
+                        ? d.toLocaleDateString('de-DE')
+                        : d.toLocaleDateString('en-US');
+
+                const aktenzeichen = this.analysisId
+                    ? this.analysisId.substring(0, 10).toUpperCase()
+                    : 'AZ-XXXXXX';
+
+                // Titel
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(14);
+                const title = this.lang === 'de'
+                    ? "Widerspruch gegen Bußgeldbescheid"
+                    : "Objection against penalty notice";
+                doc.text(title, 10, 20);
+
+                // Meta
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(10);
+                doc.text((this.lang === 'de' ? "Aktenzeichen: " : "Reference: ") + aktenzeichen, 10, 28);
+                doc.text((this.lang === 'de' ? "Datum: " : "Date: ") + formatDate(today), 10, 34);
+                doc.text(this.lang === 'de' ? "Absender: [Ihr Name, Anschrift]" : "Sender: [Your name, address]", 10, 40);
+
+                // Text
+                doc.setFontSize(11);
+                let y = 50;
+                const lines = doc.splitTextToSize(content, 190);
+                doc.text(lines, 10, y);
+
+                const filename = this.lang === 'de'
+                    ? `Widerspruch_${aktenzeichen}.pdf`
+                    : `Objection_${aktenzeichen}.pdf`;
+                doc.save(filename);
             }
 
             reset() {

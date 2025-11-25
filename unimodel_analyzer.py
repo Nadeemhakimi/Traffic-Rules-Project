@@ -49,9 +49,11 @@ def _extract_text_from_message_content(content):
 
 def analyze_media_openai(file_path: str, mime_type: str = "image/jpeg") -> Dict[str, Any]:
     """
-    Vision-Analyse über OpenAI GPT-4o-mini – liefert strukturiertes JSON zurück.
+    Vision-Analyse über OpenAI GPT-5.1 – liefert strukturiertes JSON zurück.
 
-    Erwartetes JSON (auf Gesamt-Ebene, aber hier pro Einzelbild/Frame):
+    Jetzt ERWEITERT um automatische Bußgeld-Berechnung nach deutschem Recht.
+
+    Erwartetes JSON (pro Einzelbild/Frame):
 
     {
       "detected_signs": [
@@ -70,22 +72,42 @@ def analyze_media_openai(file_path: str, mime_type: str = "image/jpeg") -> Dict[
       "violation_title": {"de": "", "en": ""},
       "violation_details": {"de": "", "en": ""},
       "stvo_references": ["§37 StVO", ...],
-      "safety_score": 0-100
+      "safety_score": 0-100,
+
+      "penalty": {
+        "fine_eur_min": 0,
+        "fine_eur_max": 0,
+        "points_flensburg": 0,
+        "driving_ban_months": 0,
+        "bkat_reference": "",
+        "legal_basis": ["§24 StVG", "BKatV", "..."],
+        "notes": {
+          "de": "Kurze Erläuterung der Sanktion nach deutschem Bußgeldkatalog",
+          "en": "Short explanation of the sanction under German traffic law"
+        }
+      }
     }
+
+    Die KI soll sich dabei explizit am DEUTSCHEN Recht orientieren
+    (StVO, StVG, BKatV, aktueller Bußgeldkatalog für Deutschland).
     """
 
     with open(file_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("utf-8")
 
     system_instruction = """
-You are 'StVO-Inspector', an expert for German Road Traffic Law (StVO).
-You receive a single traffic image (photo or video frame).
+You are 'StVO-Inspector', an expert for GERMAN road traffic law only (StVO, StVG, BKatV).
+Ignore all non-German traffic laws.
 
-Your task:
-- Understand the traffic scene.
-- Decide if there is a violation of the German StVO.
-- Estimate a safety score (0 = extremely dangerous, 100 = completely safe).
-- Provide short, clear titles and explanations in German and English.
+You receive ONE traffic image (photo or video frame from a dashcam in Germany).
+
+Your tasks:
+1. Understand the traffic scene.
+2. Decide if there is a violation of the German StVO / StVG.
+3. Estimate a safety score (0 = extremely dangerous, 100 = completely safe).
+4. Map the situation to the GERMAN Bußgeldkatalog (BKatV, Tatbestandskatalog) and
+   provide a realistic sanction: fine in EUR, points in Flensburg, driving ban.
+5. Provide short, clear titles and explanations in German and English.
 
 Return ONLY valid JSON with the following structure:
 
@@ -115,25 +137,49 @@ Return ONLY valid JSON with the following structure:
     "en": "detailed explanation in English (1-4 sentences)"
   },
   "stvo_references": [
-    "§37 StVO",
-    "§23 Abs. 1a StVO"
+    "§... StVO",
+    "§... StVG"
   ],
-  "safety_score": 0-100
+  "safety_score": 0-100,
+
+  "penalty": {
+    "fine_eur_min": number,
+    "fine_eur_max": number,
+    "points_flensburg": integer,
+    "driving_ban_months": integer,
+    "bkat_reference": "Tatbestandsnummer oder Bezeichnung, falls bekannt, sonst short text",
+    "legal_basis": [
+      "§24 StVG",
+      "BKatV",
+      "§... StVO"
+    ],
+    "notes": {
+      "de": "kurze Erläuterung der Sanktion nach deutschem Bußgeldkatalog (1-3 Sätze)",
+      "en": "short explanation of the sanction under German traffic law (1-3 sentences)"
+    }
+  }
 }
 
 Rules:
-- If no clear violation is visible, set "violation_detected": false and "severity": "NONE" or "UNCLEAR".
-- safety_score must be an integer or float between 0 and 100.
-- stvo_references should contain the most relevant paragraphs, or an empty list.
-- detected_signs can be empty if no relevant signs/objects are clearly visible.
-
-Output: ONLY the JSON object, no prose, no extra text, no markdown.
+- If NO clear violation is visible:
+  - "violation_detected": false
+  - "severity": "NONE" or "UNCLEAR"
+  - Still provide a reasonable safety_score.
+  - Set penalty fine_eur_min = 0, fine_eur_max = 0, points_flensburg = 0, driving_ban_months = 0.
+- "safety_score" must be a number between 0 and 100.
+- "stvo_references" should contain the most relevant paragraphs, or an empty list.
+- "detected_signs" can be empty if no relevant signs/objects are clearly visible.
+- For penalties:
+  - Use realistic values for GERMANY ONLY (Bußgeldkatalog, BKatV, Tatbestandskatalog).
+  - If exact values are not known, give the best realistic range for Germany and be consistent.
+  - For minor, purely formal unclear cases, you may set a very small fine (e.g. 10-20 EUR) or 0.
+- Output: ONLY the JSON object, no prose, no extra text, no markdown.
 """
 
     user_content = [
         {
             "type": "text",
-            "text": "Analyze this single traffic scene and output ONLY the JSON object as specified."
+            "text": "Analyze this single GERMAN traffic scene and output ONLY the JSON object as specified."
         },
         {
             "type": "image_url",
@@ -201,6 +247,38 @@ Output: ONLY the JSON object, no prose, no extra text, no markdown.
         data["safety_score"] = 50.0
     data["safety_score"] = max(0.0, min(100.0, data["safety_score"]))
 
+    # Penalty-Block normalisieren
+    penalty = data.get("penalty") or {}
+    try:
+        penalty["fine_eur_min"] = float(penalty.get("fine_eur_min", 0.0))
+    except Exception:
+        penalty["fine_eur_min"] = 0.0
+    try:
+        penalty["fine_eur_max"] = float(penalty.get("fine_eur_max", penalty["fine_eur_min"]))
+    except Exception:
+        penalty["fine_eur_max"] = penalty["fine_eur_min"]
+
+    try:
+        penalty["points_flensburg"] = int(penalty.get("points_flensburg", 0))
+    except Exception:
+        penalty["points_flensburg"] = 0
+
+    try:
+        penalty["driving_ban_months"] = int(penalty.get("driving_ban_months", 0))
+    except Exception:
+        penalty["driving_ban_months"] = 0
+
+    penalty.setdefault("bkat_reference", "")
+    penalty.setdefault("legal_basis", [])
+    notes = penalty.get("notes")
+    if not isinstance(notes, dict):
+        notes = {"de": "", "en": ""}
+    notes.setdefault("de", "")
+    notes.setdefault("en", "")
+    penalty["notes"] = notes
+
+    data["penalty"] = penalty
+
     return data
 
 
@@ -220,7 +298,7 @@ def summarize_overall_from_scenes(scenes: List[Dict[str, Any]]) -> Dict[str, Any
     }
 
     Rückgabe: Gleiche JSON-Struktur wie analyze_media_openai,
-    aber bezogen auf das GESAMTE Video.
+    aber bezogen auf das GESAMTE Video (inkl. penology/penalty).
     """
 
     # Nur die nötigen Infos an das Modell geben
@@ -237,64 +315,73 @@ def summarize_overall_from_scenes(scenes: List[Dict[str, Any]]) -> Dict[str, Any
             "situation_summary": a.get("situation_summary"),
             "stvo_references": a.get("stvo_references", []),
             "detected_signs": a.get("detected_signs", []),
+            "penalty": a.get("penalty", {}),
         })
 
     system_instruction = """
-You are 'StVO-Inspector', an expert for German Road Traffic Law (StVO).
-You receive multiple pre-analyzed video frames from the SAME short traffic video.
+You are 'StVO-Inspector', an expert for German road traffic law (StVO, StVG, BKatV).
+You receive multiple pre-analyzed video frames from the SAME short traffic video in Germany.
 
 Each frame already has:
-- a safety_score (0-100),
+- safety_score (0-100),
 - severity,
 - situation_summary (de/en),
 - violation_title (de/en),
 - violation_details (de/en),
 - stvo_references,
-- detected_signs.
+- detected_signs,
+- penalty information (fine/points/ban) estimated for that frame.
 
 Your task:
 - Aggregate ALL scenes into ONE overall legal + safety assessment for the complete video.
 - Consider the most dangerous / clearly violating frames more strongly.
 - If at least one strong violation is present → overall violation_detected should usually be true.
+- Also aggregate the PENALTY:
+  - If multiple violations occur, pick the legally most serious overall sanction
+    (do NOT just sum all fines – think like a German traffic authority).
+  - The final penalty must be realistic under the German Bußgeldkatalog.
 - Create new, coherent texts (do NOT just copy one scene 1:1, but you may reuse key phrasing).
 
 Return ONLY valid JSON with this structure (same as for single image):
 
 {
-  "detected_signs": [
-    {
-      "code": "string",
-      "name": { "de": "…", "en": "…" },
-      "confidence": 0.0-1.0
-    }
-  ],
+  "detected_signs": [...],
   "situation_summary": { "de": "…", "en": "…" },
   "violation_detected": true/false,
   "severity": "NONE" | "WARNING" | "CRITICAL" | "UNCLEAR",
   "violation_title": { "de": "…", "en": "…" },
   "violation_details": { "de": "…", "en": "…" },
   "stvo_references": ["§…", "..."],
-  "safety_score": 0-100
+  "safety_score": 0-100,
+  "penalty": {
+    "fine_eur_min": number,
+    "fine_eur_max": number,
+    "points_flensburg": integer,
+    "driving_ban_months": integer,
+    "bkat_reference": "string",
+    "legal_basis": ["§…", "..."],
+    "notes": { "de": "…", "en": "…" }
+  }
 }
 
 Rules:
-- safety_score: reflect the OVERALL risk of the full video (average + worst case).
-- situation_summary: describe the whole video in 2-4 sentences.
-- violation_details: explain why there is or is not a violation, also across multiple frames.
-- detected_signs: aggregate the most important traffic signs / markings from all frames (deduplicate).
-- stvo_references: aggregate and deduplicate the most relevant StVO paragraphs.
-
-Output: ONLY the JSON, no extra text.
+- "safety_score": reflect the OVERALL risk of the full video (average + worst case).
+- "situation_summary": describe the whole video in 2-4 sentences.
+- "violation_details": explain why there is or is not a violation, also across multiple frames.
+- "detected_signs": aggregate the most important traffic signs / markings from all frames (deduplicate).
+- "stvo_references": aggregate and deduplicate the most relevant StVO paragraphs.
+- "penalty": reflect the overall most serious legal consequence in Germany, not a naive sum.
+- Output: ONLY the JSON, no extra text.
 """
 
     user_message = (
-        "Here is the JSON list of frame analyses for one video. "
+        "Here is the JSON list of frame analyses for one German traffic video. "
         "Key 'time' is the timestamp in seconds:\n\n"
         + json.dumps(compact_scenes, ensure_ascii=False)
     )
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.1",
         messages=[
             {"role": "system", "content": [{"type": "text", "text": system_instruction}]},
             {"role": "user", "content": [{"type": "text", "text": user_message}]},
@@ -344,5 +431,37 @@ Output: ONLY the JSON, no extra text.
     except Exception:
         data["safety_score"] = 50.0
     data["safety_score"] = max(0.0, min(100.0, data["safety_score"]))
+
+    # Penalty normalisieren (wie oben)
+    penalty = data.get("penalty") or {}
+    try:
+        penalty["fine_eur_min"] = float(penalty.get("fine_eur_min", 0.0))
+    except Exception:
+        penalty["fine_eur_min"] = 0.0
+    try:
+        penalty["fine_eur_max"] = float(penalty.get("fine_eur_max", penalty["fine_eur_min"]))
+    except Exception:
+        penalty["fine_eur_max"] = penalty["fine_eur_min"]
+
+    try:
+        penalty["points_flensburg"] = int(penalty.get("points_flensburg", 0))
+    except Exception:
+        penalty["points_flensburg"] = 0
+
+    try:
+        penalty["driving_ban_months"] = int(penalty.get("driving_ban_months", 0))
+    except Exception:
+        penalty["driving_ban_months"] = 0
+
+    penalty.setdefault("bkat_reference", "")
+    penalty.setdefault("legal_basis", [])
+    notes = penalty.get("notes")
+    if not isinstance(notes, dict):
+        notes = {"de": "", "en": ""}
+    notes.setdefault("de", "")
+    notes.setdefault("en", "")
+    penalty["notes"] = notes
+
+    data["penalty"] = penalty
 
     return data
