@@ -2,14 +2,15 @@ import os
 import math
 import json
 import csv
+import re
 import base64
+import time
 from uuid import uuid4
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 from dataclasses import dataclass, asdict, field
 from enum import Enum
 from statistics import mean
 from typing import List, Dict, Any, Optional, Protocol
-
 import cv2
 import numpy as np
 import faiss
@@ -21,7 +22,7 @@ from flask import (
     send_from_directory,
 )
 
-from unimodel_analyzer import analyze_media_openai, summarize_overall_from_scenes
+from unimodel_analyzer import analyze_media_openai, summarize_overall_from_scenes, client as openai_client
 
 # ============================================================
 # Flask Setup
@@ -33,6 +34,114 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 TEMPLATES_DIR = "templates"
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
+
+# ============================================================
+# In-Memory Store for Analyses (for Chat Context)
+# ============================================================
+# NOTE: This is a simple in-memory cache. It resets on server restart.
+# We keep it bounded to avoid memory growth.
+ANALYSIS_STORE: Dict[str, Dict[str, Any]] = {}
+ANALYSIS_ORDER = deque()  # holds analysis_id in insertion order
+MAX_STORED_ANALYSES = 200
+
+# ============================================================
+# Chat History Store (Multi-Turn pro analysis_id)
+# ============================================================
+CHAT_HISTORY: Dict[str, List[Dict[str, str]]] = {}
+MAX_CHAT_TURNS = 10  # 10 user+assistant turns
+
+
+def _store_analysis(analysis_id: str, payload: Dict[str, Any]) -> None:
+    ANALYSIS_STORE[analysis_id] = payload
+    ANALYSIS_ORDER.append(analysis_id)
+
+    # Cleanup oldest if over limit
+    while len(ANALYSIS_ORDER) > MAX_STORED_ANALYSES:
+        old_id = ANALYSIS_ORDER.popleft()
+        if old_id in ANALYSIS_STORE:
+            del ANALYSIS_STORE[old_id]
+        # cleanup chat history too
+        if old_id in CHAT_HISTORY:
+            del CHAT_HISTORY[old_id]
+
+
+def _get_analysis_or_none(analysis_id: str) -> Optional[Dict[str, Any]]:
+    return ANALYSIS_STORE.get(analysis_id)
+
+def _extract_text_from_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    try:
+        texts = []
+        for part in content:
+            txt = getattr(part, "text", None)
+            if txt:
+                texts.append(txt)
+        if texts:
+            return "".join(texts)
+    except Exception:
+        pass
+    return str(content)
+
+
+def _sanitize_chat_output(text: str) -> str:
+    """
+    Converts markdown-ish output into clean plain text (Fließtext).
+    Removes **bold**, lists, numbering, code fences, extra whitespace.
+    """
+    t = (text or "").strip()
+
+    # remove code fences completely
+    t = re.sub(r"```.*?```", " ", t, flags=re.DOTALL)
+
+    # remove common markdown markers
+    for ch in ["**", "__", "*", "_", "`"]:
+        t = t.replace(ch, "")
+
+    # normalize per-line list markers
+    lines = t.splitlines()
+    cleaned = []
+    for line in lines:
+        l = line.strip()
+
+        # remove bullets like "- ", "• ", "* ", "+ "
+        l = re.sub(r"^[-•+]\s+", "", l)
+
+        # remove numbering like "1. " or "2) "
+        l = re.sub(r"^\d+\s*[.)]\s+", "", l)
+
+        # remove leftover markdown quote markers
+        l = re.sub(r"^>\s+", "", l)
+
+        if l:
+            cleaned.append(l)
+
+    # join to flowing text
+    t = " ".join(cleaned)
+
+    # collapse whitespace
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    return t
+
+
+def _filter_analysis_by_language(data: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    """
+    Prevents DE/EN mixing: keeps only one language for bilingual fields like:
+    situation_summary: {"de": "...", "en": "..."} -> "..."
+    violation_details: {"de": "...", "en": "..."} -> "..."
+    """
+    def pick(v):
+        if isinstance(v, dict) and lang in v:
+            return v[lang]
+        return v
+
+    out: Dict[str, Any] = {}
+    for k, v in (data or {}).items():
+        if isinstance(v, dict):
+            out[k] = {kk: pick(vv) for kk, vv in v.items()}
+        else:
+            out[k] = pick(v)
+    return out
 
 
 @app.route("/")
@@ -230,6 +339,30 @@ def find_relevant_rules_semantic(query_text, rules=None, top_k=3):
     return _retrieve_multifield(query_text, top_k=max(top_k, 5))[:top_k]
 
 
+def _compact_rules_for_chat(rules: List[Dict[str, Any]], max_chars: int = 900) -> List[Dict[str, Any]]:
+    """
+    Reduce token size: keep only the fields that help the assistant.
+    """
+    compact: List[Dict[str, Any]] = []
+    for r in (rules or []):
+        item = {
+            "id": r.get("id", r.get("_rid")),
+            "title": r.get("title", ""),
+            "paragraph": r.get("paragraph"),
+            "category": r.get("category"),
+            "description": r.get("description") or r.get("text") or "",
+            "fine_eur": r.get("fine_eur") or r.get("penalty_eur"),
+            "points": r.get("points") or r.get("points_flensburg"),
+            "driving_ban_months": r.get("driving_ban_months"),
+        }
+        # trim description
+        desc = (item.get("description") or "").strip()
+        if len(desc) > max_chars:
+            item["description"] = desc[:max_chars] + "…"
+        compact.append(item)
+    return compact
+
+
 # ============================================================
 # Video-Szenenextraktion
 # ============================================================
@@ -329,6 +462,8 @@ def analyze_endpoint():
     proof_frame_b64: Optional[str] = None
 
     try:
+        overall = None
+
         # --------------------------
         # FALL 1: Einzelbild
         # --------------------------
@@ -372,6 +507,16 @@ def analyze_endpoint():
         else:
             return jsonify({"error": f"Unsupported file type: {ext}"}), 400
 
+        # Store analysis for chat follow-ups
+        _store_analysis(analysis_id, {
+            "analysis_id": analysis_id,
+            "created_at": time.time(),
+            "file_path": file_path,
+            "file_ext": ext,
+            "data": overall,
+            "proof_frame_b64": proof_frame_b64,
+        })
+
         return jsonify({
             "analysis_id": analysis_id,
             "data": overall,
@@ -380,6 +525,189 @@ def analyze_endpoint():
 
     except Exception as e:
         print("Analysis error:", e)
+        return jsonify({"error": "Internal error", "details": str(e)}), 500
+
+
+# ============================================================
+# Chat Assistant (Driver Perspective, DE/EN) - Post-Analysis
+# ============================================================
+
+def _build_driver_assistant_system_prompt(lang: str) -> str:
+    if lang == "en":
+        return (
+            "You are Traffic Inspector, a helpful expert assistant for German traffic situations.\n"
+            "Always answer in ENGLISH.\n\n"
+            "Formatting rules (very important):\n"
+            "- Plain text only.\n"
+            "- No Markdown.\n"
+            "- No asterisks like ** or *.\n"
+            "- No bullet lists, no numbered lists.\n"
+            "- Write in flowing prose (1–2 short paragraphs).\n\n"
+            "Behavior:\n"
+            "- Use the analysis context as evidence, but do not dump JSON.\n"
+            "- If something is unclear/not visible, say so.\n"
+            "- If the user asks for steps, explain them in prose (no list formatting).\n"
+            "- General info is allowed but label it as general (not legal advice).\n"
+        )
+    else:
+        return (
+            "Du bist Traffic Inspector, ein hilfreicher Experten-Assistent für deutsche Verkehrssituationen.\n"
+            "Antworte immer auf DEUTSCH.\n\n"
+            "Formatregeln (sehr wichtig):\n"
+            "- Nur Fließtext.\n"
+            "- Kein Markdown.\n"
+            "- Keine Sternchen wie ** oder *.\n"
+            "- Keine Aufzählungen, keine Nummerierungen.\n"
+            "- Schreibe 1–2 kurze Absätze.\n\n"
+            "Verhalten:\n"
+            "- Nutze den Analyse-Kontext als Grundlage, aber gib kein JSON-Dump aus.\n"
+            "- Wenn etwas unklar/nicht sichtbar ist, sag das offen.\n"
+            "- Wenn Schritte gefragt sind, erkläre sie im Fließtext (ohne Listen).\n"
+            "- Allgemeine Hinweise sind ok, aber markiere sie als allgemein (keine Rechtsberatung).\n"
+        )
+
+
+def _build_chat_context_prompt(lang: str, analysis_context: Dict[str, Any], retrieved_rules: List[Dict[str, Any]]) -> str:
+    """
+    Context message that is constant across turns.
+    We keep it separate from the user's question so we can append chat history normally.
+    """
+    if lang == "en":
+        return (
+            "CONTEXT (German traffic analysis):\n"
+            f"{json.dumps(analysis_context, ensure_ascii=False)}\n\n"
+            "Relevant traffic rules (semantic retrieval, may be partial):\n"
+            f"{json.dumps(retrieved_rules, ensure_ascii=False)}\n\n"
+            "Use this context when answering the user."
+        )
+    return (
+        "KONTEXT (Verkehrsanalyse):\n"
+        f"{json.dumps(analysis_context, ensure_ascii=False)}\n\n"
+        "Relevante Regeln (semantische Suche, ggf. unvollständig):\n"
+        f"{json.dumps(retrieved_rules, ensure_ascii=False)}\n\n"
+        "Nutze diesen Kontext beim Beantworten der Nutzerfragen."
+    )
+
+
+def _guess_lang_de_en(text: str) -> str:
+    t = (text or "").strip().lower()
+
+    # German special chars -> German
+    if re.search(r"[äöüß]", t):
+        return "de"
+
+    # Strong start-of-sentence signals
+    if re.match(r"^(why|what|how|when|where|who|which|should|can|could|would)\b", t):
+        return "en"
+    if re.match(r"^(warum|wieso|wie|was|wann|wo|wer|welche|soll|kann|könnte|würde)\b", t):
+        return "de"
+
+    # Stopword hit count with word boundaries (works also at start/end)
+    en_words = [
+        "the", "and", "not", "why", "what", "how", "is", "are", "a", "an",
+        "i", "you", "we", "they", "should", "can", "do", "does", "did", "pay", "fine"
+    ]
+    de_words = [
+        "der", "die", "das", "und", "nicht", "warum", "wieso", "was", "wie", "ist", "sind",
+        "ein", "eine", "ich", "du", "wir", "ihr", "sie", "soll", "kann", "bitte", "muss"
+    ]
+
+    en_hits = sum(1 for w in en_words if re.search(rf"\b{re.escape(w)}\b", t))
+    de_hits = sum(1 for w in de_words if re.search(rf"\b{re.escape(w)}\b", t))
+
+    if en_hits > de_hits:
+        return "en"
+    if de_hits > en_hits:
+        return "de"
+
+    # Fallback: default German
+    return "de"
+
+
+
+@app.route("/chat", methods=["POST"])
+def chat_endpoint():
+    try:
+        payload = request.get_json(silent=True) or {}
+        analysis_id = (payload.get("analysis_id") or "").strip()
+        user_message = (payload.get("message") or "").strip()
+
+        if not analysis_id:
+            return jsonify({"error": "analysis_id is required"}), 400
+        if not user_message:
+            return jsonify({"error": "message is required"}), 400
+
+        stored = _get_analysis_or_none(analysis_id)
+        if not stored:
+            return jsonify({
+                "error": "Unknown analysis_id",
+                "details": "No stored analysis found. Please run /analyze first."
+            }), 404
+
+        # ✅ preferred language from frontend (DE/EN toggle)
+        preferred_lang = (payload.get("lang") or "").strip().lower()
+        if preferred_lang in ("de", "en"):
+            lang = preferred_lang
+        else:
+            # fallback: guess from message
+            lang = _guess_lang_de_en(user_message)
+
+        # ✅ filter bilingual analysis fields (prevents language mixing)
+        analysis_data_raw = stored.get("data") or {}
+        analysis_data = _filter_analysis_by_language(analysis_data_raw, lang)
+
+        analysis_context = {
+            "analysis_id": analysis_id,
+            "data": analysis_data,
+        }
+
+        # ✅ RAG: fetch top relevant rules from FAISS
+        try:
+            rules = find_relevant_rules_semantic(user_message, top_k=3)
+            retrieved_rules = _compact_rules_for_chat(rules)
+        except Exception:
+            retrieved_rules = []
+
+        system_prompt = _build_driver_assistant_system_prompt(lang)
+        context_prompt = _build_chat_context_prompt(lang, analysis_context, retrieved_rules)
+
+        # ✅ multi-turn history per analysis_id
+        history = CHAT_HISTORY.get(analysis_id, [])
+        history.append({"role": "user", "content": user_message})
+        history = history[-(MAX_CHAT_TURNS * 2):]
+
+        # Build messages:
+        # - system prompt
+        # - context prompt (fixed)
+        # - history (includes current question as last user message)
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context_prompt},
+        ]
+        for m in history:
+            messages.append(m)
+
+        response = openai_client.chat.completions.create(
+            model="gpt-5.1",
+            messages=messages,
+            temperature=0.7,
+            top_p=0.9,
+        )
+
+        content = response.choices[0].message.content
+        reply_text = _extract_text_from_message_content(content).strip()
+        reply_text = _sanitize_chat_output(reply_text)
+
+        history.append({"role": "assistant", "content": reply_text})
+        CHAT_HISTORY[analysis_id] = history[-(MAX_CHAT_TURNS * 2):]
+
+        return jsonify({
+            "analysis_id": analysis_id,
+            "reply": reply_text,
+        })
+
+    except Exception as e:
+        print("Chat error:", e)
         return jsonify({"error": "Internal error", "details": str(e)}), 500
 
 

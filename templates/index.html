@@ -216,6 +216,70 @@
         </div>
     </div>
 
+    <!-- =========================
+         🤖 CHATBOT (NEU)
+         - erscheint erst NACH Analyse
+         ========================= -->
+
+    <!-- Floating Button (wenn Chat minimiert) -->
+    <button
+        id="chatbot-fab"
+        onclick="openChatbot()"
+        class="hidden fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-2xl flex items-center justify-center z-50"
+        title="Chatbot"
+    >
+        <i data-lucide="bot" class="w-6 h-6"></i>
+    </button>
+
+    <!-- Chat Panel -->
+    <div
+        id="chatbot-container"
+        class="hidden fixed bottom-6 right-6 w-[380px] max-w-[92vw] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50"
+    >
+        <div class="flex items-center justify-between bg-slate-900 text-white px-4 py-3">
+            <div class="flex items-center gap-2 font-bold">
+                <i data-lucide="message-circle" class="w-5 h-5"></i>
+                <span data-t="chatTitle">StVO KI-Assistent</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="minimizeChatbot()" class="hover:text-slate-300" title="Minimieren">
+                    <i data-lucide="minus" class="w-5 h-5"></i>
+                </button>
+                <button onclick="closeChatbot()" class="hover:text-slate-300" title="Schließen">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="chatbot-messages" class="p-4 space-y-3 text-sm overflow-y-auto bg-slate-50" style="max-height: 360px;">
+            <div id="chatbot-intro" class="text-slate-600">
+                <span data-t="chatIntro">Frag mich alles zur Analyse, Paragraphen oder dem erkannten Verstoß.</span>
+            </div>
+        </div>
+
+        <div class="p-3 border-t bg-white">
+            <div class="flex gap-2">
+                <input
+                    id="chatbot-input"
+                    type="text"
+                    placeholder="z. B. Warum ist das ein Verstoß?"
+                    class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-blue-200"
+                    onkeydown="if(event.key==='Enter') sendChatbotMessage()"
+                />
+                <button
+                    id="chatbot-send"
+                    onclick="sendChatbotMessage()"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl text-sm font-semibold"
+                >
+                    <span data-t="chatSend">Senden</span>
+                </button>
+            </div>
+            <p class="mt-2 text-xs text-slate-400" data-t="chatHint">
+                Tipp: „Welche StVO-Regel ist relevant?“ oder „Wie hoch ist das Bußgeld?“
+            </p>
+        </div>
+    </div>
+
     <script>
         // Nur visuell erkennbare Verstöße (Option A)
         const OFFENCE_CATALOG = [
@@ -354,7 +418,14 @@
                 downloadAppealPdf: "Download PDF",
                 aiNotice: "Note: This analysis is generated automatically by an AI system and does not constitute legal advice or a binding decision by any public authority. No guarantee is given for accuracy or completeness; in case of doubt, only official decisions by authorities and courts are legally relevant.",
                 analyzeBtn: "Start Analysis",
-                fileSelected: "Selected file:"
+                fileSelected: "Selected file:",
+
+                // 🤖 Chatbot
+                chatTitle: "AI Assistant",
+                chatIntro: "Ask me anything about the analysis, paragraphs, or the detected offence.",
+                chatSend: "Send",
+                chatHint: "Tip: “Which StVO rule applies?” or “How high is the fine?”",
+                chatPlaceholder: "e.g. Why is this a violation?"
             },
             de: {
                 headerTitle: "StVO Verkehrs-Inspektor",
@@ -388,7 +459,14 @@
                 downloadAppealPdf: "PDF herunterladen",
                 aiNotice: "Hinweis: Diese Auswertung wird automatisiert durch ein KI-System erzeugt und stellt weder Rechtsberatung noch einen verbindlichen Bescheid einer Behörde dar. Für Richtigkeit und Vollständigkeit wird keine Gewähr übernommen; im Zweifel maßgeblich sind ausschließlich die Entscheidungen der zuständigen Behörden und Gerichte.",
                 analyzeBtn: "Analyse starten",
-                fileSelected: "Ausgewählte Datei:"
+                fileSelected: "Ausgewählte Datei:",
+
+                // 🤖 Chatbot
+                chatTitle: "StVO KI-Assistent",
+                chatIntro: "Frag mich alles zur Analyse, Paragraphen oder dem erkannten Verstoß.",
+                chatSend: "Senden",
+                chatHint: "Tipp: „Welche StVO-Regel ist relevant?“ oder „Wie hoch ist das Bußgeld?“",
+                chatPlaceholder: "z. B. Warum ist das ein Verstoß?"
             }
         };
 
@@ -450,6 +528,16 @@
                     const key = el.getAttribute('data-t');
                     if (t[key]) el.textContent = t[key];
                 });
+
+                // Placeholder für Chat Input (weil placeholder kein textContent ist)
+                const chatInput = document.getElementById('chatbot-input');
+                if (chatInput && t.chatPlaceholder) chatInput.placeholder = t.chatPlaceholder;
+
+                // Header Texte (optional – falls du es später dynamisch willst)
+                const headerTitle = document.getElementById('header-title');
+                const headerSubtitle = document.getElementById('header-subtitle');
+                if (headerTitle && t.headerTitle) headerTitle.textContent = t.headerTitle;
+                if (headerSubtitle && t.headerSubtitle) headerSubtitle.textContent = t.headerSubtitle;
             }
 
             // Nur Datei merken + UI updaten, KEINE Analyse starten
@@ -537,6 +625,10 @@
                     this.renderResult(this.currentResult);
                     document.getElementById('results-container').classList.remove('hidden');
                     document.getElementById('loading-overlay').classList.add('hidden');
+
+                    // ✅ Chatbot NUR NACH Analyse sichtbar
+                    document.getElementById('chatbot-fab').classList.remove('hidden');
+                    openChatbot();
 
                 } catch (error) {
                     console.error(error);
@@ -996,6 +1088,105 @@
                 location.reload();
             }
         }
+
+        /* ==========================
+           🤖 Chatbot JS (NEU)
+        ========================== */
+
+        function openChatbot() {
+            const panel = document.getElementById('chatbot-container');
+            const fab = document.getElementById('chatbot-fab');
+            if (panel) panel.classList.remove('hidden');
+            if (fab) fab.classList.add('hidden');
+        }
+
+        function minimizeChatbot() {
+            const panel = document.getElementById('chatbot-container');
+            const fab = document.getElementById('chatbot-fab');
+            if (panel) panel.classList.add('hidden');
+            if (fab) fab.classList.remove('hidden');
+        }
+
+        function closeChatbot() {
+            // close = minimieren + button bleibt
+            minimizeChatbot();
+        }
+
+function stripMarkdownStars(s) {
+  return (s || "").replace(/\*+/g, "");
+}
+
+function appendChatMessage(role, text) {
+  const box = document.getElementById('chatbot-messages');
+  if (!box) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = role === 'user' ? 'flex justify-end' : 'flex justify-start';
+
+  const bubble = document.createElement('div');
+  bubble.className = role === 'user'
+    ? 'max-w-[85%] bg-blue-600 text-white px-3 py-2 rounded-2xl rounded-br-md shadow'
+    : 'max-w-[85%] bg-white border border-slate-200 text-slate-800 px-3 py-2 rounded-2xl rounded-bl-md shadow-sm';
+
+  bubble.textContent = stripMarkdownStars(text);
+
+  wrap.appendChild(bubble);
+  box.appendChild(wrap);
+  box.scrollTop = box.scrollHeight;
+  return bubble;
+}
+
+
+async function sendChatbotMessage() {
+    const input = document.getElementById('chatbot-input');
+    const text = (input?.value || "").trim();
+    if (!text) return;
+
+    appendChatMessage('user', text);
+    input.value = "";
+
+    const typing = appendChatMessage(
+        'bot',
+        inspector.lang === 'de'
+            ? "Einen Moment… ich prüfe das anhand deiner Analyse."
+            : "One moment… I’m checking this based on your analysis."
+    );
+
+    try {
+        const res = await fetch('/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                analysis_id: inspector.analysisId, // ✅ korrekt
+                message: text,                     // ✅ korrekt
+            })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || "Chat failed");
+        }
+
+const reply = data.reply || (
+    inspector.lang === 'de'
+        ? "Keine Antwort erhalten."
+        : "No answer received."
+);
+
+typing.textContent = stripMarkdownStars(reply).replace(/\s+/g, " ").trim();
+
+
+    } catch (e) {
+        console.error(e);
+        typing.textContent = inspector.lang === 'de'
+            ? "Fehler beim Chat. Siehe Konsole."
+            : "Chat error. See console.";
+    }
+}
+
 
         const inspector = new TrafficInspector();
     </script>

@@ -199,7 +199,7 @@ Rules:
                 "content": user_content
             },
         ],
-        temperature=0.1
+        temperature=0.35
     )
 
     content = response.choices[0].message.content
