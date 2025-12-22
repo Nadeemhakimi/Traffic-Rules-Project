@@ -49,7 +49,7 @@ def _extract_text_from_message_content(content):
 
 def analyze_media_openai(file_path: str, mime_type: str = "image/jpeg") -> Dict[str, Any]:
     """
-    Vision-Analyse über OpenAI GPT-5.1 – liefert strukturiertes JSON zurück.
+    Vision-Analyse über OpenAI GPT-5.2 – liefert strukturiertes JSON zurück.
 
     Jetzt ERWEITERT um automatische Bußgeld-Berechnung nach deutschem Recht.
 
@@ -188,7 +188,7 @@ Rules:
     ]
 
     response = client.chat.completions.create(
-        model="gpt-5.1",
+        model="gpt-5.2",
         messages=[
             {
                 "role": "system",
@@ -381,7 +381,7 @@ Rules:
     )
 
     response = client.chat.completions.create(
-        model="gpt-5.1",
+        model="gpt-5.2",
         messages=[
             {"role": "system", "content": [{"type": "text", "text": system_instruction}]},
             {"role": "user", "content": [{"type": "text", "text": user_message}]},
