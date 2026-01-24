@@ -132,22 +132,42 @@
 
             <!-- 4. Analysis Report -->
             <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
-                 <!-- Verdict Banner -->
-                <div id="verdict-banner" class="p-6 flex items-center justify-between bg-slate-500 text-white">
-                    <div class="flex items-center gap-4">
-                        <div id="verdict-icon-container"></div>
-                        <div>
-                            <h2 class="text-2xl font-bold uppercase tracking-wide" id="verdict-title">Title</h2>
-                            <p class="opacity-90 font-medium text-sm" data-t="verdict">StVO Assessment</p>
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-sm opacity-75 uppercase font-bold tracking-wider" data-t="safetyScore">Safety Score</div>
-                        <div class="text-3xl font-black"><span id="safety-score-val">0</span>/100</div>
-                    </div>
-                </div>
+                <!-- Verdict Banner -->
+<div id="verdict-banner" class="p-6 flex items-center justify-between bg-slate-500 text-white">
+    <div class="flex items-center gap-4">
+        <div id="verdict-icon-container"></div>
+        <div>
+            <h2 class="text-2xl font-bold uppercase tracking-wide" id="verdict-title">Title</h2>
+            <p class="opacity-90 font-medium text-sm" data-t="verdict">StVO Assessment</p>
+        </div>
+    </div>
+
+    <div class="text-right">
+        <div class="text-sm opacity-75 uppercase font-bold tracking-wider" data-t="penaltyPoints">
+            Fehlerpunkte
+        </div>
+
+        <div class="text-3xl font-black flex items-end justify-end gap-1">
+            <span id="penalty-points-val">0</span>
+            <span class="text-lg font-semibold opacity-75">/</span>
+            <span id="penalty-points-max" class="text-lg font-semibold opacity-75">10</span>
+            <span class="text-lg font-semibold opacity-75" data-t="penaltyPointsUnit">Pkt.</span>
+        </div>
+    </div>
+</div>
+
+
 
                 <div class="p-6 space-y-6">
+                    <!-- Uncertainty Flags -->
+                    <section id="uncertainty-flags-section" class="hidden">
+                        <h3 class="text-slate-900 font-bold text-lg flex items-center gap-2 mb-3">
+                            <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
+                            <span data-t="uncertaintyFlags">Analysis Uncertainties</span>
+                        </h3>
+                        <div class="flex flex-wrap gap-2" id="uncertainty-flags-container"></div>
+                    </section>
+
                     <section>
                         <h3 class="text-slate-900 font-bold text-lg flex items-center gap-2 mb-3">
                             <i data-lucide="activity" class="text-blue-600 w-5 h-5"></i>
@@ -397,7 +417,9 @@
                 verdict: "StVO Assessment",
                 violationDetected: "Violation Detected",
                 noViolation: "No Violation Detected",
-                safetyScore: "Safety Score",
+                penaltyPoints: "Penalty Points",
+                penaltyPointsUnit: "Pts",
+                uncertaintyFlags: "Analysis Uncertainties",
                 situation: "Situation Analysis",
                 violationDetails: "Violation Details",
                 regulations: "Applied Regulations (StVO)",
@@ -439,7 +461,9 @@
                 verdict: "StVO-Einschätzung",
                 violationDetected: "Verstoß erkannt",
                 noViolation: "Kein Verstoß erkannt",
-                safetyScore: "Sicherheits-Score",
+                penaltyPoints: "Fehlerpunkte",
+                penaltyPointsUnit: "Pkt.",
+                uncertaintyFlags: "Analyse-Unsicherheiten",
                 situation: "Situationsanalyse",
                 violationDetails: "Details zum Verstoß",
                 regulations: "Angewandte Vorschriften (StVO)",
@@ -719,7 +743,8 @@
                     ? (result.violation_title[this.lang] || t.violationDetected)
                     : t.noViolation;
                 document.getElementById('verdict-title').textContent = title;
-                document.getElementById('safety-score-val').textContent = result.safety_score;
+                const totalPts = (result.penalty_points && result.penalty_points.total) || 0;
+                document.getElementById('penalty-points-val').textContent = totalPts;
                 document.getElementById('situation-text').textContent = result.situation_summary[this.lang];
 
                 const vBox = document.getElementById('violation-detail-box');
@@ -728,6 +753,25 @@
                     document.getElementById('violation-text').textContent = result.violation_details[this.lang];
                 } else {
                     vBox.classList.add('hidden');
+                }
+
+                // Uncertainty Flags
+                const flags = result.uncertainty_flags || [];
+                const flagsSection = document.getElementById('uncertainty-flags-section');
+                const flagsContainer = document.getElementById('uncertainty-flags-container');
+                if (flags.length > 0) {
+                    flagsSection.classList.remove('hidden');
+                    flagsContainer.innerHTML = flags.map(f => {
+                        const label = (f.label && (f.label[this.lang] || f.label.en)) || f.type || 'Unknown';
+                        return `<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-sm font-semibold border border-amber-200 shadow-sm">
+                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                            ${label}
+                        </span>`;
+                    }).join('');
+                    lucide.createIcons();
+                } else {
+                    flagsSection.classList.add('hidden');
+                    flagsContainer.innerHTML = '';
                 }
 
                 // Lists

@@ -108,6 +108,15 @@ Your tasks:
 4. Map the situation to the GERMAN Bußgeldkatalog (BKatV, Tatbestandskatalog) and
    provide a realistic sanction: fine in EUR, points in Flensburg, driving ban.
 5. Provide short, clear titles and explanations in German and English.
+6. Detect environmental or visual factors that reduce the reliability of your analysis.
+   Common factors: heavy_rain, snow, fog, too_dark, glare, blocked_view, motion_blur, poor_quality.
+   Only flag factors that are genuinely present and visibly affect scene interpretation.
+7. Assign driving school penalty points (Fehlerpunkte) per the German practical driving exam:
+   - 1 point: minor errors (leichte Fehler) - e.g. slightly late signaling, hesitant driving
+   - 3 points: moderate errors (mittlere Fehler) - e.g. no mirror check, insufficient distance
+   - 5 points: serious errors (schwere Fehler) - e.g. running stop sign, red light, wrong-way
+   - 0 points if no violation is detected.
+   For multiple distinct errors in the same scene, list each with its own points.
 
 Return ONLY valid JSON with the following structure:
 
@@ -157,6 +166,31 @@ Return ONLY valid JSON with the following structure:
       "de": "kurze Erläuterung der Sanktion nach deutschem Bußgeldkatalog (1-3 Sätze)",
       "en": "short explanation of the sanction under German traffic law (1-3 sentences)"
     }
+  },
+
+  "uncertainty_flags": [
+    {
+      "type": "snake_case_id (e.g. heavy_rain, snow, fog, too_dark, glare, blocked_view, motion_blur, poor_quality)",
+      "label": {
+        "de": "kurze Bezeichnung auf Deutsch",
+        "en": "short label in English"
+      },
+      "impact": "reduced_visibility | reduced_accuracy | partial_occlusion | ambiguous_scene"
+    }
+  ],
+
+  "penalty_points": {
+    "total": "integer (sum of all error points)",
+    "breakdown": [
+      {
+        "error": {
+          "de": "Kurze Fehlerbeschreibung auf Deutsch",
+          "en": "Short error description in English"
+        },
+        "points": "1 | 3 | 5",
+        "category": "leicht | mittel | schwer"
+      }
+    ]
   }
 }
 
@@ -173,6 +207,9 @@ Rules:
   - Use realistic values for GERMANY ONLY (Bußgeldkatalog, BKatV, Tatbestandskatalog).
   - If exact values are not known, give the best realistic range for Germany and be consistent.
   - For minor, purely formal unclear cases, you may set a very small fine (e.g. 10-20 EUR) or 0.
+- "uncertainty_flags": list only genuinely present environmental/visual factors. Return empty [] if none.
+- "penalty_points": assign driving exam penalty points. "total" is the sum of individual error points.
+  If no violation, total = 0 and breakdown = [].
 - Output: ONLY the JSON object, no prose, no extra text, no markdown.
 """
 
@@ -279,6 +316,49 @@ Rules:
 
     data["penalty"] = penalty
 
+    # --- Uncertainty flags normalization ---
+    flags_raw = data.get("uncertainty_flags") or []
+    if not isinstance(flags_raw, list):
+        flags_raw = []
+    norm_flags = []
+    for f in flags_raw:
+        if not isinstance(f, dict):
+            continue
+        flag_type = str(f.get("type", "unknown"))
+        label = f.get("label")
+        if not isinstance(label, dict):
+            label = {"de": str(label or flag_type), "en": str(label or flag_type)}
+        label.setdefault("de", flag_type)
+        label.setdefault("en", flag_type)
+        impact = str(f.get("impact", "reduced_accuracy"))
+        norm_flags.append({"type": flag_type, "label": label, "impact": impact})
+    data["uncertainty_flags"] = norm_flags
+
+    # --- Penalty points (driving exam) normalization ---
+    pp_raw = data.get("penalty_points") or {}
+    if not isinstance(pp_raw, dict):
+        pp_raw = {}
+    pp_breakdown = pp_raw.get("breakdown") or []
+    if not isinstance(pp_breakdown, list):
+        pp_breakdown = []
+    norm_breakdown = []
+    for item in pp_breakdown:
+        if not isinstance(item, dict):
+            continue
+        error = item.get("error")
+        if not isinstance(error, dict):
+            error = {"de": str(error or ""), "en": str(error or "")}
+        error.setdefault("de", "")
+        error.setdefault("en", "")
+        try:
+            pts = int(item.get("points", 1))
+        except Exception:
+            pts = 1
+        category = str(item.get("category", "leicht"))
+        norm_breakdown.append({"error": error, "points": pts, "category": category})
+    pp_total = sum(b["points"] for b in norm_breakdown) if norm_breakdown else 0
+    data["penalty_points"] = {"total": pp_total, "breakdown": norm_breakdown}
+
     return data
 
 
@@ -316,6 +396,8 @@ def summarize_overall_from_scenes(scenes: List[Dict[str, Any]]) -> Dict[str, Any
             "stvo_references": a.get("stvo_references", []),
             "detected_signs": a.get("detected_signs", []),
             "penalty": a.get("penalty", {}),
+            "uncertainty_flags": a.get("uncertainty_flags", []),
+            "penalty_points": a.get("penalty_points", {}),
         })
 
     system_instruction = """
@@ -330,7 +412,9 @@ Each frame already has:
 - violation_details (de/en),
 - stvo_references,
 - detected_signs,
-- penalty information (fine/points/ban) estimated for that frame.
+- penalty information (fine/points/ban) estimated for that frame,
+- uncertainty_flags (environmental/visual factors reducing reliability),
+- penalty_points (driving exam penalty points with breakdown).
 
 Your task:
 - Aggregate ALL scenes into ONE overall legal + safety assessment for the complete video.
@@ -340,6 +424,9 @@ Your task:
   - If multiple violations occur, pick the legally most serious overall sanction
     (do NOT just sum all fines – think like a German traffic authority).
   - The final penalty must be realistic under the German Bußgeldkatalog.
+- Aggregate uncertainty_flags: deduplicate by type across all frames (keep each unique type once).
+- Aggregate penalty_points: SUM total points across frames for DISTINCT violations only.
+  Do NOT double-count the same violation seen in consecutive frames. List each distinct error once.
 - Create new, coherent texts (do NOT just copy one scene 1:1, but you may reuse key phrasing).
 
 Return ONLY valid JSON with this structure (same as for single image):
@@ -361,6 +448,15 @@ Return ONLY valid JSON with this structure (same as for single image):
     "bkat_reference": "string",
     "legal_basis": ["§…", "..."],
     "notes": { "de": "…", "en": "…" }
+  },
+  "uncertainty_flags": [
+    { "type": "snake_case_id", "label": {"de": "…", "en": "…"}, "impact": "reduced_visibility|reduced_accuracy|partial_occlusion|ambiguous_scene" }
+  ],
+  "penalty_points": {
+    "total": integer,
+    "breakdown": [
+      { "error": {"de": "…", "en": "…"}, "points": 1|3|5, "category": "leicht|mittel|schwer" }
+    ]
   }
 }
 
@@ -371,6 +467,8 @@ Rules:
 - "detected_signs": aggregate the most important traffic signs / markings from all frames (deduplicate).
 - "stvo_references": aggregate and deduplicate the most relevant StVO paragraphs.
 - "penalty": reflect the overall most serious legal consequence in Germany, not a naive sum.
+- "uncertainty_flags": deduplicated list of environmental factors. Empty [] if none.
+- "penalty_points": sum distinct errors across frames. Do not count the same violation twice.
 - Output: ONLY the JSON, no extra text.
 """
 
@@ -463,5 +561,48 @@ Rules:
     penalty["notes"] = notes
 
     data["penalty"] = penalty
+
+    # --- Uncertainty flags normalization (video) ---
+    flags_raw = data.get("uncertainty_flags") or []
+    if not isinstance(flags_raw, list):
+        flags_raw = []
+    norm_flags = []
+    for f in flags_raw:
+        if not isinstance(f, dict):
+            continue
+        flag_type = str(f.get("type", "unknown"))
+        label = f.get("label")
+        if not isinstance(label, dict):
+            label = {"de": str(label or flag_type), "en": str(label or flag_type)}
+        label.setdefault("de", flag_type)
+        label.setdefault("en", flag_type)
+        impact = str(f.get("impact", "reduced_accuracy"))
+        norm_flags.append({"type": flag_type, "label": label, "impact": impact})
+    data["uncertainty_flags"] = norm_flags
+
+    # --- Penalty points normalization (video) ---
+    pp_raw = data.get("penalty_points") or {}
+    if not isinstance(pp_raw, dict):
+        pp_raw = {}
+    pp_breakdown = pp_raw.get("breakdown") or []
+    if not isinstance(pp_breakdown, list):
+        pp_breakdown = []
+    norm_breakdown = []
+    for item in pp_breakdown:
+        if not isinstance(item, dict):
+            continue
+        error = item.get("error")
+        if not isinstance(error, dict):
+            error = {"de": str(error or ""), "en": str(error or "")}
+        error.setdefault("de", "")
+        error.setdefault("en", "")
+        try:
+            pts = int(item.get("points", 1))
+        except Exception:
+            pts = 1
+        category = str(item.get("category", "leicht"))
+        norm_breakdown.append({"error": error, "points": pts, "category": category})
+    pp_total = sum(b["points"] for b in norm_breakdown) if norm_breakdown else 0
+    data["penalty_points"] = {"total": pp_total, "breakdown": norm_breakdown}
 
     return data

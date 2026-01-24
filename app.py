@@ -374,7 +374,7 @@ def _finalize_with_legal_rag(
 
     try:
         resp = openai_client.chat.completions.create(
-            model="gpt-5.1",
+            model="gpt-5.2",
             messages=messages,
             temperature=0.2,
             top_p=0.9,
@@ -399,6 +399,11 @@ def _finalize_with_legal_rag(
         # Merge: keep original + override with law-grounded evaluation
         out = dict(base_observation or {})
         out.update(parsed)
+
+        # Preserve vision-only fields that legal RAG doesn't produce
+        for key in ("uncertainty_flags", "penalty_points"):
+            if key not in parsed and key in (base_observation or {}):
+                out[key] = base_observation[key]
 
         out["legal_rag"] = {
             "enabled": True,
@@ -881,7 +886,7 @@ def chat_endpoint():
             messages.append(m)
 
         response = openai_client.chat.completions.create(
-            model="gpt-5.1",
+            model="gpt-5.2",
             messages=messages,
             temperature=0.7,
             top_p=0.9,
