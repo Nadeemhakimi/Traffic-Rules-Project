@@ -2,6 +2,10 @@
 
 AI-powered German traffic law analysis system that uses computer vision and legal RAG (Retrieval-Augmented Generation) to detect traffic violations, assess penalties, and generate formal documents.
 
+## Authors
+
+Nadeem Hakimi, Naweed Ohdah, Arnaud Bosselmann
+
 ## Features
 
 - **Image & Video Analysis**: Upload dashcam photos or videos for automated StVO compliance checking
