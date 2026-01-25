@@ -87,7 +87,7 @@ graph TD
 | **Vector Search**    | FAISS (facebook/faiss-cpu)                                   |
 | **Embeddings**       | sentence-transformers (distiluse-base-multilingual-cased-v2) |
 | **Video Processing** | OpenCV (cv2)                                                 |
-| **Frontend**         | Vanilla JavaScript (ES6 classes), Tailwind CSS               |
+| **Frontend**         | Vanilla JavaScript (ES6 classes), Tailwind CSS, HTML               |
 | **Icons**            | Lucide Icons                                                 |
 | **PDF Generation**   | jsPDF (client-side)                                          |
 | **Legal Data**       | StVO + BKatV full-text with FAISS indexing                   |
